@@ -1,0 +1,90 @@
+version: '3.8'
+
+networks:
+  location-network:
+    driver: bridge
+
+volumes:
+  postgres-location-data:
+
+services:
+  postgres-location:
+    image: postgres:15-alpine
+    container_name: postgres-location-standalone
+    environment:
+      POSTGRES_DB: location_db
+      POSTGRES_USER: location_user
+      POSTGRES_PASSWORD: location_pass
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-location-data:/var/lib/postgresql/data
+    networks:
+      - location-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U location_user -d location_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis-location
+    ports:
+      - "6378:6379"  # ✅ FIXED: Map to Redis default port
+    networks:
+      - location-network
+    command: redis-server --port 6379  # Explicit port
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper-location
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2180
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2180:2180"
+    networks:
+      - location-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-location
+    depends_on:
+      - zookeeper
+    ports:
+      - "9091:9091"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2180
+      # ✅ FIXED: Proper listener configuration
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9091
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9091
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - location-network
+
+  location-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: location-service
+    depends_on:
+      postgres-location:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-location:5432/location_db
+      SPRING_DATASOURCE_USERNAME: location_user
+      SPRING_DATASOURCE_PASSWORD: location_pass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092  # ✅ Use internal listener
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379  # ✅ Added explicit port
+    networks:
+      - location-network
+    restart: unless-stopped
