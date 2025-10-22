@@ -1,466 +1,480 @@
-  version: '3.8'
+version: '3.8'
 
-  networks:
-    stock-network:
-      driver: bridge
+networks:
+  stock-network:
+    driver: bridge
 
-  volumes:
-    # PostgreSQL volumes - one per service
-    postgres-product-data:
-    postgres-inventory-data:
-    postgres-movement-data:
-    postgres-location-data:
-    postgres-quality-data:
-    postgres-user-data:
-    postgres-alert-data:
-    postgres-reporting-data:
-    postgres-integration-data:
-    postgres-ai-data:
-    
-    # Infrastructure volumes
-    zookeeper-data:
-    kafka-data:
-    keycloak-data:
-    
-  services:
+volumes:
+  # PostgreSQL volumes - one per service
+  postgres-product-data:
+  postgres-inventory-data:
+  postgres-movement-data:
+  postgres-location-data:
+  postgres-quality-data:
+  postgres-user-data:
+  postgres-alert-data:
+  postgres-reporting-data:
+  postgres-integration-data:
+  postgres-ai-data:
+  
+  # Infrastructure volumes
+  zookeeper-data:
+  kafka-data:
+  keycloak-data:
+  
+services:
 
-    # ==============================================
-    # INFRASTRUCTURE SERVICES
-    # ==============================================
+  # ==============================================
+  # INFRASTRUCTURE SERVICES
+  # ==============================================
 
-    # Zookeeper for Kafka
-    zookeeper:
-      image: confluentinc/cp-zookeeper:7.5.0
-      container_name: zookeeper
-      environment:
-        ZOOKEEPER_CLIENT_PORT: 2181
-        ZOOKEEPER_TICK_TIME: 2000
-      ports:
-        - "2181:2181"
-      volumes:
-        - zookeeper-data:/var/lib/zookeeper/data
-      networks:
-        - stock-network
-      restart: unless-stopped
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+    networks:
+      - stock-network
+    restart: unless-stopped
 
-    # Kafka Message Broker
-    kafka:
-      image: confluentinc/cp-kafka:7.5.0
-      container_name: kafka
-      depends_on:
-        - zookeeper
-      ports:
-        - "9092:9092"
-        - "29092:29092"
-      environment:
-        KAFKA_BROKER_ID: 1
-        KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-        KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-        KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
-        KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-        KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-        KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      volumes:
-        - kafka-data:/var/lib/kafka/data
-      networks:
-        - stock-network
-      healthcheck:
-        test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
-      restart: unless-stopped
+  # Kafka Message Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - stock-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
-    # Kafdrop - Kafka UI
-    kafdrop:
-      image: obsidiandynamics/kafdrop:latest
-      container_name: kafdrop
-      depends_on:
-        kafka:
-          condition: service_healthy
-      ports:
-        - "9000:9000"
-      environment:
-        KAFKA_BROKERCONNECT: kafka:29092
-        JVM_OPTS: "-Xms32M -Xmx64M"
-        SERVER_SERVLET_CONTEXTPATH: "/"
-      networks:
-        - stock-network
-      restart: unless-stopped
+  # Kafdrop - Kafka UI
+  kafdrop:
+    image: obsidiandynamics/kafdrop:latest
+    container_name: kafdrop
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "9000:9000"
+    environment:
+      KAFKA_BROKERCONNECT: kafka:29092
+      JVM_OPTS: "-Xms32M -Xmx64M"
+      SERVER_SERVLET_CONTEXTPATH: "/"
+    networks:
+      - stock-network
+    restart: unless-stopped
 
-    # Redis - Caching & Locking
-    redis:
-      image: redis:7-alpine
-      container_name: redis
-      ports:
-        - "6379:6379"
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD", "redis-cli", "ping"]
-        interval: 10s
-        timeout: 3s
-        retries: 5
+  # Redis - Caching & Locking
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-    # Keycloak - Authentication & Authorization
-    keycloak:
-      image: quay.io/keycloak/keycloak:23.0
-      container_name: keycloak
-      command: start-dev
-      environment:
-        KEYCLOAK_ADMIN: admin
-        KEYCLOAK_ADMIN_PASSWORD: admin
-        KC_DB: postgres
-        KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
-        KC_DB_USERNAME: keycloak
-        KC_DB_PASSWORD: keycloak
-        KC_HTTP_PORT: 8080
-      ports:
-        - "8180:8080"
-      depends_on:
-        - postgres-keycloak
-      networks:
-        - stock-network
-      restart: unless-stopped
+  # Keycloak - Authentication & Authorization
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_HTTP_PORT: 8080
+    ports:
+      - "8180:8080"
+    depends_on:
+      - postgres-keycloak
+    networks:
+      - stock-network
+    restart: unless-stopped
 
-    # PostgreSQL for Keycloak
-    postgres-keycloak:
-      image: postgres:15-alpine
-      container_name: postgres-keycloak
-      environment:
-        POSTGRES_DB: keycloak
-        POSTGRES_USER: keycloak
-        POSTGRES_PASSWORD: keycloak
-      volumes:
-        - keycloak-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
+  # PostgreSQL for Keycloak
+  postgres-keycloak:
+    image: postgres:15-alpine
+    container_name: postgres-keycloak
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - keycloak-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
 
-    # Zipkin - Distributed Tracing
-    zipkin:
-      image: openzipkin/zipkin:latest
-      container_name: zipkin
-      ports:
-        - "9411:9411"
-      networks:
-        - stock-network
-      restart: unless-stopped
+  # Zipkin - Distributed Tracing
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - stock-network
+    restart: unless-stopped
 
-    # ==============================================
-    # MICROSERVICES DATABASES
-    # ==============================================
+  # ==============================================
+  # MICROSERVICES DATABASES
+  # ==============================================
 
-    # Product Service Database
-    postgres-product:
-      image: postgres:15-alpine
-      container_name: postgres-product
-      environment:
-        POSTGRES_DB: product_db
-        POSTGRES_USER: product_user
-        POSTGRES_PASSWORD: product_pass
-      ports:
-        - "5432:5432"
-      volumes:
-        - postgres-product-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U product_user -d product_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # Product Service Database
+  postgres-product:
+    image: postgres:15-alpine
+    container_name: postgres-product
+    environment:
+      POSTGRES_DB: product_db
+      POSTGRES_USER: product_user
+      POSTGRES_PASSWORD: product_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-product-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U product_user -d product_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # Inventory Service Database
-    postgres-inventory:
-      image: postgres:15-alpine
-      container_name: postgres-inventory
-      environment:
-        POSTGRES_DB: inventory_db
-        POSTGRES_USER: inventory_user
-        POSTGRES_PASSWORD: inventory_pass
-      ports:
-        - "5433:5432"
-      volumes:
-        - postgres-inventory-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U inventory_user -d inventory_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # Inventory Service Database
+  postgres-inventory:
+    image: postgres:15-alpine
+    container_name: postgres-inventory
+    environment:
+      POSTGRES_DB: inventory_db
+      POSTGRES_USER: inventory_user
+      POSTGRES_PASSWORD: inventory_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-inventory-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory_user -d inventory_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # Movement Service Database
-    postgres-movement:
-      image: postgres:15-alpine
-      container_name: postgres-movement
-      environment:
-        POSTGRES_DB: movement_db
-        POSTGRES_USER: movement_user
-        POSTGRES_PASSWORD: movement_pass
-      ports:
-        - "5434:5432"
-      volumes:
-        - postgres-movement-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U movement_user -d movement_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # Movement Service Database
+  postgres-movement:
+    image: postgres:15-alpine
+    container_name: postgres-movement
+    environment:
+      POSTGRES_DB: movement_db
+      POSTGRES_USER: movement_user
+      POSTGRES_PASSWORD: movement_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-movement-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U movement_user -d movement_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # Location Service Database
-    postgres-location:
-      image: postgres:15-alpine
-      container_name: postgres-location
-      environment:
-        POSTGRES_DB: location_db
-        POSTGRES_USER: location_user
-        POSTGRES_PASSWORD: location_pass
-      ports:
-        - "5435:5432"
-      volumes:
-        - postgres-location-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U location_user -d location_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # Location Service Database
+  postgres-location:
+    image: postgres:15-alpine
+    container_name: postgres-location
+    environment:
+      POSTGRES_DB: location_db
+      POSTGRES_USER: location_user
+      POSTGRES_PASSWORD: location_pass
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-location-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U location_user -d location_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # Quality Service Database
-    postgres-quality:
-      image: postgres:15-alpine
-      container_name: postgres-quality
-      environment:
-        POSTGRES_DB: quality_db
-        POSTGRES_USER: quality_user
-        POSTGRES_PASSWORD: quality_pass
-      ports:
-        - "5436:5432"
-      volumes:
-        - postgres-quality-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U quality_user -d quality_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # Quality Service Database
+  postgres-quality:
+    image: postgres:15-alpine
+    container_name: postgres-quality
+    environment:
+      POSTGRES_DB: quality_db
+      POSTGRES_USER: quality_user
+      POSTGRES_PASSWORD: quality_pass
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres-quality-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quality_user -d quality_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # User Service Database
-    postgres-user:
-      image: postgres:15-alpine
-      container_name: postgres-user
-      environment:
-        POSTGRES_DB: user_db
-        POSTGRES_USER: user_user
-        POSTGRES_PASSWORD: user_pass
-      ports:
-        - "5437:5432"
-      volumes:
-        - postgres-user-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U user_user -d user_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # User Service Database
+  postgres-user:
+    image: postgres:15-alpine
+    container_name: postgres-user
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: user_user
+      POSTGRES_PASSWORD: user_pass
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres-user-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_user -d user_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # Alert Service Database
-    postgres-alert:
-      image: postgres:15-alpine
-      container_name: postgres-alert
-      environment:
-        POSTGRES_DB: alert_db
-        POSTGRES_USER: alert_user
-        POSTGRES_PASSWORD: alert_pass
-      ports:
-        - "5438:5432"
-      volumes:
-        - postgres-alert-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U alert_user -d alert_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # Alert Service Database
+  postgres-alert:
+    image: postgres:15-alpine
+    container_name: postgres-alert
+    environment:
+      POSTGRES_DB: alert_db
+      POSTGRES_USER: alert_user
+      POSTGRES_PASSWORD: alert_pass
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres-alert-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alert_user -d alert_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # Reporting Service Database
-    postgres-reporting:
-      image: postgres:15-alpine
-      container_name: postgres-reporting
-      environment:
-        POSTGRES_DB: reporting_db
-        POSTGRES_USER: reporting_user
-        POSTGRES_PASSWORD: reporting_pass
-      ports:
-        - "5439:5432"
-      volumes:
-        - postgres-reporting-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U reporting_user -d reporting_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # Reporting Service Database
+  postgres-reporting:
+    image: postgres:15-alpine
+    container_name: postgres-reporting
+    environment:
+      POSTGRES_DB: reporting_db
+      POSTGRES_USER: reporting_user
+      POSTGRES_PASSWORD: reporting_pass
+    ports:
+      - "5439:5432"
+    volumes:
+      - postgres-reporting-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reporting_user -d reporting_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # Integration Service Database
-    postgres-integration:
-      image: postgres:15-alpine
-      container_name: postgres-integration
-      environment:
-        POSTGRES_DB: integration_db
-        POSTGRES_USER: integration_user
-        POSTGRES_PASSWORD: integration_pass
-      ports:
-        - "5440:5432"
-      volumes:
-        - postgres-integration-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U integration_user -d integration_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # Integration Service Database
+  postgres-integration:
+    image: postgres:15-alpine
+    container_name: postgres-integration
+    environment:
+      POSTGRES_DB: integration_db
+      POSTGRES_USER: integration_user
+      POSTGRES_PASSWORD: integration_pass
+    ports:
+      - "5440:5432"
+    volumes:
+      - postgres-integration-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U integration_user -d integration_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # AI/Forecasting Service Database
-    postgres-ai:
-      image: postgres:15-alpine
-      container_name: postgres-ai
-      environment:
-        POSTGRES_DB: ai_db
-        POSTGRES_USER: ai_user
-        POSTGRES_PASSWORD: ai_pass
-      ports:
-        - "5441:5432"
-      volumes:
-        - postgres-ai-data:/var/lib/postgresql/data
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U ai_user -d ai_db"]
-        interval: 10s
-        timeout: 5s
-        retries: 5
+  # AI/Forecasting Service Database
+  postgres-ai:
+    image: postgres:15-alpine
+    container_name: postgres-ai
+    environment:
+      POSTGRES_DB: ai_db
+      POSTGRES_USER: ai_user
+      POSTGRES_PASSWORD: ai_pass
+    ports:
+      - "5441:5432"
+    volumes:
+      - postgres-ai-data:/var/lib/postgresql/data
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_user -d ai_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-    # ==============================================
-    # MICROSERVICES
-    # ==============================================
+  # ==============================================
+  # MICROSERVICES
+  # ==============================================
 
-    # Auth Service
-    auth-service:
-      build:
-        context: ../auth-service
-        dockerfile: Dockerfile
-      container_name: auth-service
-      depends_on:
-        postgres-user:
-          condition: service_healthy
-        kafka:
-          condition: service_healthy
-        redis:
-          condition: service_healthy
-      ports:
-        - "8081:8081"
-      environment:
-        SPRING_PROFILES_ACTIVE: docker
-        SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-user:5432/user_db
-        SPRING_DATASOURCE_USERNAME: user_user
-        SPRING_DATASOURCE_PASSWORD: user_pass
-        SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-        SPRING_DATA_REDIS_HOST: redis
-        SPRING_DATA_REDIS_PORT: 6379
-        JWT_SECRET: dev-secret-key-change-in-production-minimum-256-bits
-        JWT_ACCESS_TOKEN_EXPIRATION: 900000
-        JWT_REFRESH_TOKEN_EXPIRATION: 604800000
-        # Email configuration
-        SPRING_MAIL_HOST: smtp.gmail.com
-        SPRING_MAIL_PORT: 587
-        SPRING_MAIL_USERNAME: houarimehdi7@gmail.com
-        SPRING_MAIL_PASSWORD: nnoivyxhebwhdhye
-        SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: true
-        SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: true
-      networks:
-        - stock-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8081/api/health || exit 1"]
-        interval: 30s
-        timeout: 3s
-        retries: 3
+  # Auth Service
+  auth-service:
+    build:
+      context: ../auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    depends_on:
+      postgres-user:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-user:5432/user_db
+      SPRING_DATASOURCE_USERNAME: user_user
+      SPRING_DATASOURCE_PASSWORD: user_pass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      JWT_SECRET: 7xK9mP2nQ5wR8tY3uV6zA1bC4dE7fG0hI2jK5lM8nO1pQ4rS7tU0vW3xY6zA9bB2cD5eF8gH1iJ4kL7mN0oP3qR6sT9uV2wX5yZ8aB1cD4eE7fF0gG3hH6iI9jJ2kK5lL8mM1nN4oO7pP0qQ3rR6sS9tT2uU5vV8wW1xX4yY7zZ0aA3b
+      SPRING_MAIL_HOST: smtp.gmail.com
+      SPRING_MAIL_PORT: 587
+      SPRING_MAIL_USERNAME: houarimehdi7@gmail.com
+      SPRING_MAIL_PASSWORD: nnoivyxhebwhdhye
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: true
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: true
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8081/api/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
-    # Location Service
-    location-service:
-      build:
-        context: ../location-service
-        dockerfile: Dockerfile
-      container_name: location-service
-      depends_on:
-        postgres-location:
-          condition: service_healthy
-        kafka:
-          condition: service_healthy
-        auth-service:
-          condition: service_started
-      ports:
-        - "8085:8085"
-      environment:
-        SPRING_PROFILES_ACTIVE: docker
-        SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-location:5432/location_db
-        SPRING_DATASOURCE_USERNAME: location_user
-        SPRING_DATASOURCE_PASSWORD: location_pass
-        SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-        SPRING_DATA_REDIS_HOST: redis
-        SPRING_DATA_REDIS_PORT: 6379
-      networks:
-        - stock-network
-      restart: unless-stopped
-    # Product Service (add when ready)
-    # product-service:
-    #   build:
-    #     context: ../product-service
-    #     dockerfile: Dockerfile
-    #   container_name: product-service
-    #   depends_on:
-    #     postgres-product:
-    #       condition: service_healthy
-    #     kafka:
-    #       condition: service_healthy
-    #     redis:
-    #       condition: service_healthy
-    #   ports:
-    #     - "8082:8082"
-    #   environment:
-    #     SPRING_PROFILES_ACTIVE: docker
-    #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-product:5432/product_db
-    #     SPRING_DATASOURCE_USERNAME: product_user
-    #     SPRING_DATASOURCE_PASSWORD: product_pass
-    #     SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-    #     SPRING_DATA_REDIS_HOST: redis
-    #     SPRING_DATA_REDIS_PORT: 6379
-    #   networks:
-    #     - stock-network
-    #   restart: unless-stopped
+  # Location Service
+  location-service:
+    build:
+      context: ../location-service
+      dockerfile: Dockerfile
+    container_name: location-service
+    depends_on:
+      postgres-location:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-location:5432/location_db
+      SPRING_DATASOURCE_USERNAME: location_user
+      SPRING_DATASOURCE_PASSWORD: location_pass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8085/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  # Product Service
+  product-service:
+    build:
+      context: ../product-service
+      dockerfile: Dockerfile
+    container_name: product-service
+    depends_on:
+      postgres-product:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-product:5432/product_db
+      SPRING_DATASOURCE_USERNAME: product_user
+      SPRING_DATASOURCE_PASSWORD: product_pass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    networks:
+      - stock-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8082/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
 
     # Inventory Service (add when ready)
     # inventory-service:
