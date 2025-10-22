@@ -61,7 +61,7 @@ public class JwtConfig {
         log.debug("Loading private key from: {}", privateKeyPath);
 
         ClassPathResource resource = new ClassPathResource(privateKeyPath);
-        String key = new String(Files.readAllBytes(resource.getFile().toPath()));
+        String key = new String(resource.getInputStream().readAllBytes());
 
         // Remove PEM headers/footers and whitespace
         String privateKeyPEM = key
@@ -83,7 +83,7 @@ public class JwtConfig {
         log.debug("Loading public key from: {}", publicKeyPath);
 
         ClassPathResource resource = new ClassPathResource(publicKeyPath);
-        String key = new String(Files.readAllBytes(resource.getFile().toPath()));
+        String key = new String(resource.getInputStream().readAllBytes());
 
         // Remove PEM headers/footers and whitespace
         String publicKeyPEM = key

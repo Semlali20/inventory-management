@@ -49,32 +49,24 @@ spring:
   data:
     redis:
       host: redis
-      port: 6378
+      port: 6379
       timeout: 2000ms
 
   security:
     oauth2:
-      resourceserver:
+      resource server:
         jwt:
           issuer-uri: http://auth-service:8081
           jwk-set-uri: http://auth-service:8081/.well-known/jwks.json
 
-
-eureka:
-  client:
-    service-url:
-      defaultZone: http://eureka-server:8761/eureka/
-    register-with-eureka: true
-    fetch-registry: true
-  instance:
-    prefer-ip-address: true
-    lease-renewal-interval-in-seconds: 10
-    lease-expiration-duration-in-seconds: 30
+server:
+  port: 8085
 
 logging:
   level:
-    com.warehouse.location: INFO
+    com.stock.locationservice: INFO    # ✅ CHANGED package name
     org.springframework.web: INFO
+    org.springframework.security: DEBUG    # ✅ ADDED for JWT debugging
 
 management:
   endpoints:
@@ -94,3 +86,10 @@ management:
     tags:
       application: ${spring.application.name}
       environment: docker
+
+# Disable Eureka for now (you don't have eureka-server running)
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false

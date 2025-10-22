@@ -67,7 +67,7 @@ public class SecurityConfig {
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
                                 "/api/auth/verify-email",
-                                "/.well-known/jwks.json",        // ✅ ADD THIS LINE
+                                "/.well-known/jwks.json",     
                                 "/actuator/health",
                                 "/actuator/info",
                                 "/v3/api-docs/**",
@@ -103,6 +103,7 @@ public class SecurityConfig {
                                 "/api/auth/forgot-password",
                                 "/api/auth/reset-password",
                                 "/api/auth/verify-email",
+                                "/.well-known/jwks.json",
                                 "/actuator/health",
                                 "/actuator/info",
                                 "/v3/api-docs/**",
