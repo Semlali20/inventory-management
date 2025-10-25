@@ -476,32 +476,32 @@ services:
       retries: 3
       start_period: 40s
 
-    # Inventory Service (add when ready)
-    # inventory-service:
-    #   build:
-    #     context: ../inventory-service
-    #     dockerfile: Dockerfile
-    #   container_name: inventory-service
-    #   depends_on:
-    #     postgres-inventory:
-    #       condition: service_healthy
-    #     kafka:
-    #       condition: service_healthy
-    #     redis:
-    #       condition: service_healthy
-    #   ports:
-    #     - "8083:8083"
-    #   environment:
-    #     SPRING_PROFILES_ACTIVE: docker
-    #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-inventory:5432/inventory_db
-    #     SPRING_DATASOURCE_USERNAME: inventory_user
-    #     SPRING_DATASOURCE_PASSWORD: inventory_pass
-    #     SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-    #     SPRING_DATA_REDIS_HOST: redis
-    #     SPRING_DATA_REDIS_PORT: 6379
-    #   networks:
-    #     - stock-network
-    #   restart: unless-stopped
+  # Inventory Service
+  inventory-service:
+      build:
+        context: ../inventory-service
+        dockerfile: Dockerfile
+      container_name: inventory-service
+      depends_on:
+        postgres-inventory:
+          condition: service_healthy
+        kafka:
+          condition: service_healthy
+        redis:
+          condition: service_healthy
+      ports:
+        - "8086:8086"
+      environment:
+        SPRING_PROFILES_ACTIVE: docker
+        SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-inventory:5432/inventory_db
+        SPRING_DATASOURCE_USERNAME: inventory_user
+        SPRING_DATASOURCE_PASSWORD: inventory_pass
+        SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+        SPRING_DATA_REDIS_HOST: redis
+        SPRING_DATA_REDIS_PORT: 6379
+      networks:
+        - stock-network
+      restart: unless-stopped
 
     # Movement Service (add when ready)
     # movement-service:
