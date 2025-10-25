@@ -50,7 +50,7 @@ public class Category {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Optional: Self-referencing relationship for parent category
+   
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_category_id", insertable = false, updatable = false)
     private Category parentCategory;
