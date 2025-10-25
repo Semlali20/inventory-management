@@ -1,17 +1,18 @@
+// inventory-service/src/main/java/com/stock/inventoryservice/entity/Serial.java
 package com.stock.inventoryservice.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
-/**
- * Serial entity for individual unit tracking.
- * Provides full traceability for high-value or regulated items.
- */
 @Entity
-@Table(name = "serials")
+@Table(name = "serials", indexes = {
+        @Index(name = "idx_serial_item", columnList = "item_id"),
+        @Index(name = "idx_serial_number", columnList = "serial_number")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -23,28 +24,30 @@ public class Serial {
     private String id;
 
     @Column(nullable = false, unique = true, length = 100)
-    private String code; // Business key
+    private String code;
 
-    @Column(name = "item_id", nullable = false)
-    private String itemId;
+    // Cross-service reference
+    @Column(name = "item_id", nullable = false, length = 36)
+    private String itemId; // → Product Service
 
-    @Column(name = "serial_number", nullable = false, length = 100)
+    @Column(name = "serial_number", nullable = false, unique = true, length = 100)
     private String serialNumber;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private SerialStatus status;
 
-    @Column(name = "location_id")
-    private String locationId; // Current location
+    // Cross-service reference
+    @Column(name = "location_id", length = 36)
+    private String locationId; // → Location Service
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    // Lazy relationship
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "item_id", insertable = false, updatable = false)
-    private Item item;
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
 
 }

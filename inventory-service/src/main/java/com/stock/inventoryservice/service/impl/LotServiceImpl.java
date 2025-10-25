@@ -1,9 +1,10 @@
 package com.stock.inventoryservice.service.impl;
 
-import com.stock.inventoryservice.dto.LotDTO;
+import com.stock.inventoryservice.dto.*;
 import com.stock.inventoryservice.entity.Lot;
-import com.stock.inventoryservice.event.EventPublisher;
-import com.stock.inventoryservice.event.LotCreatedEvent;
+import com.stock.inventoryservice.entity.LotStatus;
+import com.stock.inventoryservice.event.LotEventPublisher;
+import com.stock.inventoryservice.event.dto.LotEvent;
 import com.stock.inventoryservice.exception.DuplicateResourceException;
 import com.stock.inventoryservice.exception.ResourceNotFoundException;
 import com.stock.inventoryservice.repository.LotRepository;
@@ -13,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,31 +26,32 @@ import java.util.stream.Collectors;
 public class LotServiceImpl implements LotService {
 
     private final LotRepository lotRepository;
-    private final EventPublisher eventPublisher;
+    private final LotEventPublisher eventPublisher;
 
     @Override
-    public LotDTO createLot(Lot lot) {
-        log.info("Creating lot with code: {}", lot.getCode());
+    public LotDTO createLot(LotCreateRequest request) {
+        log.info("Creating lot with code: {}", request.getCode());
 
-        if (lotRepository.existsByCode(lot.getCode())) {
-            throw new DuplicateResourceException("Lot with code " + lot.getCode() + " already exists");
+        // Check for duplicate code
+        if (lotRepository.existsByCode(request.getCode())) {
+            throw new DuplicateResourceException("Lot with code " + request.getCode() + " already exists");
         }
+
+        Lot lot = Lot.builder()
+                .code(request.getCode())
+                .itemId(request.getItemId())
+                .lotNumber(request.getLotNumber())
+                .expiryDate(request.getExpiryDate())
+                .manufactureDate(request.getManufactureDate())
+                .status(LotStatus.ACTIVE)
+                .attributes(request.getAttributes())
+                .build();
 
         Lot savedLot = lotRepository.save(lot);
         log.info("Lot created successfully with ID: {}", savedLot.getId());
 
         // Publish event
-        LotCreatedEvent event = LotCreatedEvent.builder()
-                .lotId(savedLot.getId())
-                .code(savedLot.getCode())
-                .itemId(savedLot.getItemId())
-                .mfgDate(savedLot.getMfgDate())
-                .expiryDate(savedLot.getExpiryDate())
-                .supplierId(savedLot.getSupplierId())
-                .timestamp(LocalDateTime.now())
-                .build();
-
-        eventPublisher.publishLotCreated(event);
+        publishLotEvent(savedLot, "CREATED");
 
         return mapToDTO(savedLot);
     }
@@ -56,7 +59,7 @@ public class LotServiceImpl implements LotService {
     @Override
     @Transactional(readOnly = true)
     public LotDTO getLotById(String id) {
-        log.info("Fetching lot with ID: {}", id);
+        log.debug("Fetching lot with ID: {}", id);
 
         Lot lot = lotRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lot not found with ID: " + id));
@@ -67,7 +70,7 @@ public class LotServiceImpl implements LotService {
     @Override
     @Transactional(readOnly = true)
     public LotDTO getLotByCode(String code) {
-        log.info("Fetching lot with code: {}", code);
+        log.debug("Fetching lot with code: {}", code);
 
         Lot lot = lotRepository.findByCode(code)
                 .orElseThrow(() -> new ResourceNotFoundException("Lot not found with code: " + code));
@@ -78,7 +81,7 @@ public class LotServiceImpl implements LotService {
     @Override
     @Transactional(readOnly = true)
     public List<LotDTO> getAllLots() {
-        log.info("Fetching all lots");
+        log.debug("Fetching all lots");
 
         return lotRepository.findAll().stream()
                 .map(this::mapToDTO)
@@ -88,7 +91,7 @@ public class LotServiceImpl implements LotService {
     @Override
     @Transactional(readOnly = true)
     public List<LotDTO> getLotsByItemId(String itemId) {
-        log.info("Fetching lots for item ID: {}", itemId);
+        log.debug("Fetching lots for item ID: {}", itemId);
 
         return lotRepository.findByItemId(itemId).stream()
                 .map(this::mapToDTO)
@@ -98,7 +101,7 @@ public class LotServiceImpl implements LotService {
     @Override
     @Transactional(readOnly = true)
     public List<LotDTO> getLotsBySupplierId(String supplierId) {
-        log.info("Fetching lots for supplier ID: {}", supplierId);
+        log.debug("Fetching lots for supplier ID: {}", supplierId);
 
         return lotRepository.findBySupplierId(supplierId).stream()
                 .map(this::mapToDTO)
@@ -107,18 +110,30 @@ public class LotServiceImpl implements LotService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<LotDTO> getExpiredLots() {
-        log.info("Fetching expired lots");
+    public List<LotDTO> getLotsByStatus(String status) {
+        log.debug("Fetching lots with status: {}", status);
 
-        return lotRepository.findExpiredLots(LocalDateTime.now()).stream()
+        LotStatus lotStatus = LotStatus.valueOf(status.toUpperCase());
+        return lotRepository.findByStatus(lotStatus).stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<LotDTO> getLotsExpiringBetween(LocalDateTime startDate, LocalDateTime endDate) {
-        log.info("Fetching lots expiring between {} and {}", startDate, endDate);
+    public List<LotDTO> getExpiredLots() {
+        log.debug("Fetching expired lots");
+
+        LocalDate today = LocalDate.now();
+        return lotRepository.findByExpiryDateBefore(today).stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LotDTO> getLotsExpiringBetween(LocalDate startDate, LocalDate endDate) {
+        log.debug("Fetching lots expiring between {} and {}", startDate, endDate);
 
         return lotRepository.findByExpiryDateBetween(startDate, endDate).stream()
                 .map(this::mapToDTO)
@@ -128,35 +143,63 @@ public class LotServiceImpl implements LotService {
     @Override
     @Transactional(readOnly = true)
     public List<LotDTO> getActiveLotsForItem(String itemId) {
-        log.info("Fetching active lots for item ID: {}", itemId);
+        log.debug("Fetching active lots for item: {}", itemId);
 
-        return lotRepository.findActiveLotsForItem(itemId, LocalDateTime.now()).stream()
+        return lotRepository.findByItemIdAndStatus(itemId, LotStatus.ACTIVE).stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
-    public LotDTO updateLot(String id, Lot lotUpdate) {
+    public LotDTO updateLot(String id, LotUpdateRequest request) {
         log.info("Updating lot with ID: {}", id);
 
         Lot lot = lotRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lot not found with ID: " + id));
 
-        // Check if code is being changed and if it already exists
-        if (!lot.getCode().equals(lotUpdate.getCode()) && lotRepository.existsByCode(lotUpdate.getCode())) {
-            throw new DuplicateResourceException("Lot with code " + lotUpdate.getCode() + " already exists");
+        // Update fields
+        if (request.getLotNumber() != null) {
+            lot.setLotNumber(request.getLotNumber());
+        }
+        if (request.getExpiryDate() != null) {
+            lot.setExpiryDate(request.getExpiryDate());
+        }
+        if (request.getManufactureDate() != null) {
+            lot.setManufactureDate(request.getManufactureDate());
+        }
+        if (request.getStatus() != null) {
+            lot.setStatus(request.getStatus());
+        }
+        if (request.getAttributes() != null) {
+            lot.setAttributes(request.getAttributes());
         }
 
-        lot.setCode(lotUpdate.getCode());
-        lot.setItemId(lotUpdate.getItemId());
-        lot.setMfgDate(lotUpdate.getMfgDate());
-        lot.setExpiryDate(lotUpdate.getExpiryDate());
-        lot.setSupplierId(lotUpdate.getSupplierId());
+        Lot savedLot = lotRepository.save(lot);
+        log.info("Lot updated successfully");
 
-        Lot updatedLot = lotRepository.save(lot);
-        log.info("Lot updated successfully with ID: {}", updatedLot.getId());
+        // Publish event
+        publishLotEvent(savedLot, "UPDATED");
 
-        return mapToDTO(updatedLot);
+        return mapToDTO(savedLot);
+    }
+
+    @Override
+    public LotDTO updateLotStatus(String id, String status) {
+        log.info("Updating lot status for ID: {} to {}", id, status);
+
+        Lot lot = lotRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lot not found with ID: " + id));
+
+        LotStatus lotStatus = LotStatus.valueOf(status.toUpperCase());
+        lot.setStatus(lotStatus);
+
+        Lot savedLot = lotRepository.save(lot);
+        log.info("Lot status updated successfully");
+
+        // Publish event
+        publishLotEvent(savedLot, "STATUS_CHANGED");
+
+        return mapToDTO(savedLot);
     }
 
     @Override
@@ -167,7 +210,50 @@ public class LotServiceImpl implements LotService {
                 .orElseThrow(() -> new ResourceNotFoundException("Lot not found with ID: " + id));
 
         lotRepository.delete(lot);
-        log.info("Lot deleted successfully with ID: {}", id);
+        log.info("Lot deleted successfully");
+
+        // Publish event
+        publishLotEvent(lot, "DELETED");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Long countLotsByItem(String itemId) {
+        log.debug("Counting lots for item: {}", itemId);
+        return lotRepository.countByItemId(itemId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isLotExpired(String lotId) {
+        log.debug("Checking if lot {} is expired", lotId);
+
+        Lot lot = lotRepository.findById(lotId)
+                .orElseThrow(() -> new ResourceNotFoundException("Lot not found with ID: " + lotId));
+
+        if (lot.getExpiryDate() == null) {
+            return false;
+        }
+
+        return lot.getExpiryDate().isBefore(LocalDate.now());
+    }
+
+    // ========== HELPER METHODS ==========
+
+    private void publishLotEvent(Lot lot, String eventType) {
+        LotEvent event = LotEvent.builder()
+                .lotId(lot.getId())
+                .lotCode(lot.getCode())
+                .itemId(lot.getItemId())
+                .lotNumber(lot.getLotNumber())
+                .expiryDate(lot.getExpiryDate())
+                .manufactureDate(lot.getManufactureDate())
+                .status(lot.getStatus().name())
+                .eventType(eventType)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        eventPublisher.publishLotEvent(event);
     }
 
     private LotDTO mapToDTO(Lot lot) {
@@ -175,9 +261,11 @@ public class LotServiceImpl implements LotService {
                 .id(lot.getId())
                 .code(lot.getCode())
                 .itemId(lot.getItemId())
-                .mfgDate(lot.getMfgDate())
+                .lotNumber(lot.getLotNumber())
                 .expiryDate(lot.getExpiryDate())
-                .supplierId(lot.getSupplierId())
+                .manufactureDate(lot.getManufactureDate())
+                .status(lot.getStatus())
+                .attributes(lot.getAttributes())
                 .createdAt(lot.getCreatedAt())
                 .updatedAt(lot.getUpdatedAt())
                 .build();

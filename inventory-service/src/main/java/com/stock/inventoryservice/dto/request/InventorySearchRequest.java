@@ -1,4 +1,4 @@
-package com.stock.inventoryservice.dto;
+package com.stock.inventoryservice.dto.request;
 
 import lombok.*;
 import java.time.LocalDateTime;

@@ -1,4 +1,4 @@
-package com.stock.inventoryservice.dto;
+package com.stock.inventoryservice.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

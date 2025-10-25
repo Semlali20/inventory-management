@@ -1,3 +1,4 @@
+// inventory-service/src/main/java/com/stock/inventoryservice/entity/Inventory.java
 package com.stock.inventoryservice.entity;
 
 import jakarta.persistence.*;
@@ -10,7 +11,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "inventory")
+@Table(name = "inventory", indexes = {
+        @Index(name = "idx_item_id", columnList = "item_id"),
+        @Index(name = "idx_location_id", columnList = "location_id"),
+        @Index(name = "idx_item_location", columnList = "item_id, location_id")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -21,25 +26,30 @@ public class Inventory {
     @GeneratedValue(strategy = GenerationType.UUID)
     private String id;
 
-    @Version // ⚠️ CRITICAL for concurrency control
+    @Version
     private Long version;
 
-    @Column(name = "item_id", nullable = false)
-    private String itemId;
+    // ===== CROSS-SERVICE REFERENCES (String IDs ONLY) =====
 
-    @Column(name = "warehouse_id", nullable = false)
-    private String warehouseId; // From Location Service
+    @Column(name = "item_id", nullable = false, length = 36)
+    private String itemId; // → Product Service
 
-    @Column(name = "location_id", nullable = false)
-    private String locationId; // From Location Service (Zone-Aisle-Rack-Level-Bin)
+    @Column(name = "warehouse_id", nullable = false, length = 36)
+    private String warehouseId; // → Location Service
 
-    @Column(name = "lot_id")
-    private String lotId; // Nullable - only for lot-tracked items
+    @Column(name = "location_id", nullable = false, length = 36)
+    private String locationId; // → Location Service
 
-    @Column(name = "serial_id")
-    private String serialId; // Nullable - only for serialised items
+    // ===== SAME-SERVICE REFERENCES =====
 
-    // Quantities
+    @Column(name = "lot_id", length = 36)
+    private String lotId; // → Lot table (same service)
+
+    @Column(name = "serial_id", length = 36)
+    private String serialId; // → Serial table (same service)
+
+    // ===== QUANTITIES =====
+
     @Column(name = "quantity_on_hand", nullable = false)
     private Double quantityOnHand = 0.0;
 
@@ -50,29 +60,28 @@ public class Inventory {
     private Double quantityDamaged = 0.0;
 
     @Column(length = 20)
-    private String uom; // Unit of Measure (EA, KG, L, etc.)
+    private String uom;
+
+    // ===== METADATA =====
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private InventoryStatus status;
 
     @Column(precision = 19, scale = 4)
-    private BigDecimal cost; // Cost per unit
+    private BigDecimal unitCost;
 
     @Column(name = "expiry_date")
-    private LocalDate expiryDate; // For perishable items
+    private LocalDate expiryDate;
 
     @Column(name = "manufacture_date")
     private LocalDate manufactureDate;
 
-    @Column(name = "last_movement_at")
-    private LocalDateTime lastMovementAt;
-
-    @Column(name = "last_reconciliation_at")
-    private LocalDateTime lastReconciliationAt;
+    @Column(name = "last_count_date")
+    private LocalDate lastCountDate;
 
     @Column(columnDefinition = "TEXT")
-    private String attributes; // JSON for custom fields
+    private String attributes;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
@@ -82,10 +91,7 @@ public class Inventory {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Lazy relationships
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "item_id", insertable = false, updatable = false)
-    private Item item;
+    // ===== JPA RELATIONSHIPS (ONLY within same service) =====
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lot_id", insertable = false, updatable = false)
@@ -95,19 +101,10 @@ public class Inventory {
     @JoinColumn(name = "serial_id", insertable = false, updatable = false)
     private Serial serial;
 
-    /**
-     * Calculated field: Available quantity = On Hand - Reserved
-     */
+    // ===== CALCULATED FIELDS =====
+
     @Transient
     public Double getAvailableQuantity() {
         return quantityOnHand - quantityReserved;
-    }
-
-    /**
-     * Check if inventory has sufficient available quantity
-     */
-    @Transient
-    public boolean hasSufficientStock(Double required) {
-        return getAvailableQuantity() >= required;
     }
 }

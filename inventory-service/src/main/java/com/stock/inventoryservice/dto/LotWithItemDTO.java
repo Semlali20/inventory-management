@@ -1,4 +1,4 @@
-// inventory-service/src/main/java/com/stock/inventoryservice/dto/LotDTO.java
+// inventory-service/src/main/java/com/stock/inventoryservice/dto/LotWithItemDTO.java
 package com.stock.inventoryservice.dto;
 
 import com.stock.inventoryservice.entity.LotStatus;
@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class LotDTO {
+public class LotWithItemDTO {
 
     private String id;
     private String code;
@@ -24,7 +24,12 @@ public class LotDTO {
     private LocalDate manufactureDate;
     private String supplierId;
     private LotStatus status;
-    private String attributes; // JSON string
+    private String attributes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // Item details from cache
+    private String itemSku;
+    private String itemName;
+    private Boolean itemIsActive;
 }

@@ -1,22 +1,25 @@
-package com.stock.inventoryservice.event;
+
+package com.stock.inventoryservice.event.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 @Builder
-public class StockBelowThresholdEvent {
+@AllArgsConstructor
+@NoArgsConstructor
+public class StockBelowThresholdEvent implements Serializable {
+
     private String itemId;
     private String locationId;
-    private BigDecimal currentQuantity;
-    private BigDecimal minThreshold;
+    private String warehouseId;
+    private Double currentQuantity;
+    private Double threshold;
     private String alertLevel; // WARNING, CRITICAL
     private LocalDateTime timestamp;
 }

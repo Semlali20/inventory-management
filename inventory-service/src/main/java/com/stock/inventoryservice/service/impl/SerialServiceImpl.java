@@ -1,8 +1,10 @@
 package com.stock.inventoryservice.service.impl;
 
-import com.stock.inventoryservice.dto.SerialDTO;
+import com.stock.inventoryservice.dto.*;
+import com.stock.inventoryservice.dto.request.SerialCreateRequest;
 import com.stock.inventoryservice.entity.Serial;
 import com.stock.inventoryservice.entity.SerialStatus;
+
 import com.stock.inventoryservice.exception.DuplicateResourceException;
 import com.stock.inventoryservice.exception.ResourceNotFoundException;
 import com.stock.inventoryservice.repository.SerialRepository;
@@ -12,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -22,17 +25,36 @@ import java.util.stream.Collectors;
 public class SerialServiceImpl implements SerialService {
 
     private final SerialRepository serialRepository;
+    private final SerialEventPublisher eventPublisher;
 
     @Override
-    public SerialDTO createSerial(Serial serial) {
-        log.info("Creating serial with code: {}", serial.getCode());
+    public SerialDTO createSerial(SerialCreateRequest request) {
+        log.info("Creating serial with code: {}", request.getCode());
 
-        if (serialRepository.existsByCode(serial.getCode())) {
-            throw new DuplicateResourceException("Serial with code " + serial.getCode() + " already exists");
+        // Check for duplicate code
+        if (serialRepository.existsByCode(request.getCode())) {
+            throw new DuplicateResourceException("Serial with code " + request.getCode() + " already exists");
         }
+
+        // Check for duplicate serial number
+        if (serialRepository.existsBySerialNumber(request.getSerialNumber())) {
+            throw new DuplicateResourceException("Serial number " + request.getSerialNumber() + " already exists");
+        }
+
+        Serial serial = Serial.builder()
+                .code(request.getCode())
+                .itemId(request.getItemId())
+                .serialNumber(request.getSerialNumber())
+                .lotId(request.getLotId())
+                .locationId(request.getLocationId())
+                .status(SerialStatus.AVAILABLE)
+                .build();
 
         Serial savedSerial = serialRepository.save(serial);
         log.info("Serial created successfully with ID: {}", savedSerial.getId());
+
+        // Publish event
+        publishSerialEvent(savedSerial, "CREATED");
 
         return mapToDTO(savedSerial);
     }
@@ -40,7 +62,7 @@ public class SerialServiceImpl implements SerialService {
     @Override
     @Transactional(readOnly = true)
     public SerialDTO getSerialById(String id) {
-        log.info("Fetching serial with ID: {}", id);
+        log.debug("Fetching serial with ID: {}", id);
 
         Serial serial = serialRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Serial not found with ID: " + id));
@@ -51,7 +73,7 @@ public class SerialServiceImpl implements SerialService {
     @Override
     @Transactional(readOnly = true)
     public SerialDTO getSerialByCode(String code) {
-        log.info("Fetching serial with code: {}", code);
+        log.debug("Fetching serial with code: {}", code);
 
         Serial serial = serialRepository.findByCode(code)
                 .orElseThrow(() -> new ResourceNotFoundException("Serial not found with code: " + code));
@@ -61,8 +83,19 @@ public class SerialServiceImpl implements SerialService {
 
     @Override
     @Transactional(readOnly = true)
+    public SerialDTO getSerialBySerialNumber(String serialNumber) {
+        log.debug("Fetching serial with serial number: {}", serialNumber);
+
+        Serial serial = serialRepository.findBySerialNumber(serialNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Serial not found with serial number: " + serialNumber));
+
+        return mapToDTO(serial);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<SerialDTO> getAllSerials() {
-        log.info("Fetching all serials");
+        log.debug("Fetching all serials");
 
         return serialRepository.findAll().stream()
                 .map(this::mapToDTO)
@@ -72,7 +105,7 @@ public class SerialServiceImpl implements SerialService {
     @Override
     @Transactional(readOnly = true)
     public List<SerialDTO> getSerialsByItemId(String itemId) {
-        log.info("Fetching serials for item ID: {}", itemId);
+        log.debug("Fetching serials for item ID: {}", itemId);
 
         return serialRepository.findByItemId(itemId).stream()
                 .map(this::mapToDTO)
@@ -82,7 +115,7 @@ public class SerialServiceImpl implements SerialService {
     @Override
     @Transactional(readOnly = true)
     public List<SerialDTO> getSerialsByLotId(String lotId) {
-        log.info("Fetching serials for lot ID: {}", lotId);
+        log.debug("Fetching serials for lot ID: {}", lotId);
 
         return serialRepository.findByLotId(lotId).stream()
                 .map(this::mapToDTO)
@@ -91,10 +124,21 @@ public class SerialServiceImpl implements SerialService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<SerialDTO> getSerialsByStatus(String status) {
-        log.info("Fetching serials with status: {}", status);
+    public List<SerialDTO> getSerialsByLocationId(String locationId) {
+        log.debug("Fetching serials for location ID: {}", locationId);
 
-        return serialRepository.findByStatus(status).stream()
+        return serialRepository.findByLocationId(locationId).stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SerialDTO> getSerialsByStatus(String status) {
+        log.debug("Fetching serials with status: {}", status);
+
+        SerialStatus serialStatus = SerialStatus.valueOf(status.toUpperCase());
+        return serialRepository.findByStatus(serialStatus).stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
@@ -102,49 +146,94 @@ public class SerialServiceImpl implements SerialService {
     @Override
     @Transactional(readOnly = true)
     public List<SerialDTO> getSerialsByItemIdAndStatus(String itemId, String status) {
-        log.info("Fetching serials for item ID: {} with status: {}", itemId, status);
+        log.debug("Fetching serials for item: {} with status: {}", itemId, status);
 
-        return serialRepository.findByItemIdAndStatus(itemId, status).stream()
+        SerialStatus serialStatus = SerialStatus.valueOf(status.toUpperCase());
+        return serialRepository.findByItemIdAndStatus(itemId, serialStatus).stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
-    public SerialDTO updateSerial(String id, Serial serialUpdate) {
+    @Transactional(readOnly = true)
+    public List<SerialDTO> getAvailableSerials(String itemId) {
+        log.debug("Fetching available serials for item: {}", itemId);
+
+        return serialRepository.findByItemIdAndStatus(itemId, SerialStatus.AVAILABLE).stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public SerialDTO updateSerial(String id, SerialUpdateRequest request) {
         log.info("Updating serial with ID: {}", id);
 
         Serial serial = serialRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Serial not found with ID: " + id));
 
-        // Check if code is being changed and if it already exists
-        if (!serial.getCode().equals(serialUpdate.getCode()) && serialRepository.existsByCode(serialUpdate.getCode())) {
-            throw new DuplicateResourceException("Serial with code " + serialUpdate.getCode() + " already exists");
+        // Update fields
+        if (request.getSerialNumber() != null) {
+            // Check for duplicate
+            if (!serial.getSerialNumber().equals(request.getSerialNumber()) &&
+                    serialRepository.existsBySerialNumber(request.getSerialNumber())) {
+                throw new DuplicateResourceException("Serial number " + request.getSerialNumber() + " already exists");
+            }
+            serial.setSerialNumber(request.getSerialNumber());
+        }
+        if (request.getLotId() != null) {
+            serial.setLotId(request.getLotId());
+        }
+        if (request.getLocationId() != null) {
+            serial.setLocationId(request.getLocationId());
+        }
+        if (request.getStatus() != null) {
+            serial.setStatus(request.getStatus());
         }
 
-        serial.setCode(serialUpdate.getCode());
-        serial.setItemId(serialUpdate.getItemId());
-        serial.setId(serialUpdate.getId());
-        serial.setStatus(serialUpdate.getStatus());
+        Serial savedSerial = serialRepository.save(serial);
+        log.info("Serial updated successfully");
 
-        Serial updatedSerial = serialRepository.save(serial);
-        log.info("Serial updated successfully with ID: {}", updatedSerial.getId());
+        // Publish event
+        publishSerialEvent(savedSerial, "UPDATED");
 
-        return mapToDTO(updatedSerial);
+        return mapToDTO(savedSerial);
     }
 
     @Override
     public SerialDTO updateSerialStatus(String id, String status) {
-        log.info("Updating status for serial ID: {} to {}", id, status);
+        log.info("Updating serial status for ID: {} to {}", id, status);
 
         Serial serial = serialRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Serial not found with ID: " + id));
 
-        serial.setStatus(SerialStatus.valueOf(status));
-        Serial updatedSerial = serialRepository.save(serial);
+        SerialStatus serialStatus = SerialStatus.valueOf(status.toUpperCase());
+        serial.setStatus(serialStatus);
 
+        Serial savedSerial = serialRepository.save(serial);
         log.info("Serial status updated successfully");
 
-        return mapToDTO(updatedSerial);
+        // Publish event
+        publishSerialEvent(savedSerial, "STATUS_CHANGED");
+
+        return mapToDTO(savedSerial);
+    }
+
+    @Override
+    public SerialDTO updateSerialLocation(String id, String locationId) {
+        log.info("Updating serial location for ID: {} to location: {}", id, locationId);
+
+        Serial serial = serialRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Serial not found with ID: " + id));
+
+        serial.setLocationId(locationId);
+
+        Serial savedSerial = serialRepository.save(serial);
+        log.info("Serial location updated successfully");
+
+        // Publish event
+        publishSerialEvent(savedSerial, "LOCATION_CHANGED");
+
+        return mapToDTO(savedSerial);
     }
 
     @Override
@@ -155,15 +244,52 @@ public class SerialServiceImpl implements SerialService {
                 .orElseThrow(() -> new ResourceNotFoundException("Serial not found with ID: " + id));
 
         serialRepository.delete(serial);
-        log.info("Serial deleted successfully with ID: {}", id);
+        log.info("Serial deleted successfully");
+
+        // Publish event
+        publishSerialEvent(serial, "DELETED");
     }
 
     @Override
     @Transactional(readOnly = true)
     public Long countSerialsByLot(String lotId) {
-        log.info("Counting serials for lot ID: {}", lotId);
-
+        log.debug("Counting serials for lot: {}", lotId);
         return serialRepository.countByLotId(lotId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Long countSerialsByItem(String itemId) {
+        log.debug("Counting serials for item: {}", itemId);
+        return serialRepository.countByItemId(itemId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isSerialAvailable(String serialNumber) {
+        log.debug("Checking availability of serial: {}", serialNumber);
+
+        return serialRepository.findBySerialNumber(serialNumber)
+                .map(serial -> serial.getStatus() == SerialStatus.AVAILABLE)
+                .orElse(false);
+    }
+
+    // ========== HELPER METHODS ==========
+
+    private void publishSerialEvent(Serial serial, String eventType) {
+        SerialEvent event = SerialEvent.builder()
+                .serialId(serial.getId())
+                .serialCode(serial.getCode())
+                .itemId(serial.getItemId())
+                .serialNumber(serial.getSerialNumber())
+                .lotId(serial.getLotId())
+                .locationId(serial.getLocationId())
+                .status(serial.getStatus().name())
+                .eventType(eventType)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        eventPublisher.publishSerialEvent(event);
     }
 
     private SerialDTO mapToDTO(Serial serial) {
@@ -171,10 +297,11 @@ public class SerialServiceImpl implements SerialService {
                 .id(serial.getId())
                 .code(serial.getCode())
                 .itemId(serial.getItemId())
-                .lotId(serial.getId())
+                .serialNumber(serial.getSerialNumber())
+                .lotId(serial.getLotId())
+                .locationId(serial.getLocationId())
                 .status(serial.getStatus())
                 .createdAt(serial.getCreatedAt())
-                .updatedAt(serial.getUpdatedAt())
                 .build();
     }
 }

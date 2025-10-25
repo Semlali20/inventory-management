@@ -1,6 +1,6 @@
 package com.stock.inventoryservice.event;
 
-import com.stock.inventoryservice.config.KafkaConfig;
+import com.stock.inventoryservice.event.dto.LotCreatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
