@@ -8,7 +8,7 @@ import java.util.List;
 
 public interface QualityAttachmentService {
 
-    QualityAttachmentResponse uploadAttachment(QualityAttachmentRequest request);
+    QualityAttachmentResponse uploadAttachment(QualityAttachmentRequest request, MultipartFile file);
 
     QualityAttachmentResponse uploadFile(MultipartFile file, String qualityControlId, String quarantineId,
                                          String description, String attachmentType);

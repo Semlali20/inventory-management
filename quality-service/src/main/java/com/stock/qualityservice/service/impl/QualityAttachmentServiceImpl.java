@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -49,14 +50,56 @@ public class QualityAttachmentServiceImpl implements QualityAttachmentService {
     );
 
     @Override
-    public QualityAttachmentResponse uploadAttachment(QualityAttachmentRequest request) {
-        log.info("Creating attachment record: {}", request.getFileName());
+    public QualityAttachmentResponse uploadAttachment(QualityAttachmentRequest request, MultipartFile file) {
+        log.info("Uploading attachment: {}", file.getOriginalFilename());
 
-        QualityAttachment attachment = mapToEntity(request);
-        QualityAttachment savedAttachment = attachmentRepository.save(attachment);
+        // Validate file
+        validateFile(file);
 
-        log.info("Attachment created successfully with ID: {}", savedAttachment.getId());
-        return mapToResponse(savedAttachment);
+        try {
+            // Create upload directory if it doesn't exist
+            Path uploadPath = Paths.get(uploadDir);
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
+
+            // Generate unique file name
+            String originalFileName = file.getOriginalFilename();
+            String fileExtension = originalFileName != null && originalFileName.contains(".")
+                    ? originalFileName.substring(originalFileName.lastIndexOf("."))
+                    : "";
+            String uniqueFileName = UUID.randomUUID().toString() + fileExtension;
+
+            // Save file to disk
+            Path filePath = uploadPath.resolve(uniqueFileName);
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+            // Create attachment entity
+            QualityAttachment attachment = new QualityAttachment();
+            attachment.setQualityControlId(request.getQualityControlId());
+            attachment.setQuarantineId(request.getQuarantineId());
+            attachment.setFileName(originalFileName);
+            attachment.setFileType(file.getContentType());
+            attachment.setFileSize(file.getSize());
+            attachment.setFileUrl("/api/quality/attachments/download/" + uniqueFileName);
+            attachment.setFilePath(filePath.toString());
+            attachment.setDescription(request.getDescription());
+            attachment.setAttachmentType(request.getAttachmentType());
+            attachment.setUploadedBy("SYSTEM"); // TODO: Get from security context
+            attachment.setUploadedAt(LocalDateTime.now());
+
+            QualityAttachment savedAttachment = attachmentRepository.save(attachment);
+            log.info("Attachment uploaded successfully with ID: {}", savedAttachment.getId());
+
+            // Publish event to Kafka
+           // qualityEventProducer.sendAttachmentUploadedEvent(savedAttachment);
+
+            return mapToResponse(savedAttachment);
+
+        } catch (IOException e) {
+            log.error("Failed to upload file: {}", file.getOriginalFilename(), e);
+            throw new FileUploadException("Failed to upload file", file.getOriginalFilename(), e);
+        }
     }
 
     @Override
