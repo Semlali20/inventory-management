@@ -66,7 +66,7 @@ spring:
           jwk-set-uri: ${KEYCLOAK_JWK_SET_URI}
 
 server:
-  port: 8086
+  port: 8087
 
 eureka:
   client:
