@@ -19,7 +19,7 @@ public class CacheConfig {
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
         RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofHours(1)) // Cache for 1 hour
+                .entryTtl(Duration.ofHours(1))
                 .serializeKeysWith(
                         RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer())
                 )
@@ -32,16 +32,13 @@ public class CacheConfig {
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(config)
-                .withCacheConfiguration("sites", config.entryTtl(Duration.ofHours(2)))
-                .withCacheConfiguration("warehouses", config.entryTtl(Duration.ofHours(1)))
-                .withCacheConfiguration("locations", config.entryTtl(Duration.ofMinutes(30)))
+                // Quality-specific caches
+                .withCacheConfiguration("qualityProfiles",
+                        config.entryTtl(Duration.ofHours(4)))
+                .withCacheConfiguration("samplingPlans",
+                        config.entryTtl(Duration.ofHours(4)))
+                .withCacheConfiguration("inspections",
+                        config.entryTtl(Duration.ofMinutes(30)))
                 .build();
     }
 }
-
-// Then update your service methods:
-// @Cacheable(value = "locations", key = "#id")
-// public LocationDTO getLocationById(String id) { ... }
-//
-// @CacheEvict(value = "locations", key = "#id")
-// public void deleteLocation(String id) { ... }

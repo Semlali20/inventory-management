@@ -3,44 +3,18 @@ package com.stock.qualityservice.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.stock.inventoryservice.dto.cache.ItemCacheDTO;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
 public class RedisConfig {
 
     /**
-     * RedisTemplate for ItemCacheDTO
-     * Used by ItemCacheService to store/retrieve Item data from Product Service
-     */
-    @Bean
-    public RedisTemplate<String, ItemCacheDTO> itemCacheRedisTemplate(RedisConnectionFactory connectionFactory) {
-        RedisTemplate<String, ItemCacheDTO> template = new RedisTemplate<>();
-        template.setConnectionFactory(connectionFactory);
-
-        // Key serializer (String)
-        StringRedisSerializer stringSerializer = new StringRedisSerializer();
-        template.setKeySerializer(stringSerializer);
-        template.setHashKeySerializer(stringSerializer);
-
-        // ✅ FIX: Use Jackson2JsonRedisSerializer with explicit type
-        Jackson2JsonRedisSerializer<ItemCacheDTO> jsonSerializer = 
-            new Jackson2JsonRedisSerializer<>(objectMapper(), ItemCacheDTO.class);
-        
-        template.setValueSerializer(jsonSerializer);
-        template.setHashValueSerializer(jsonSerializer);
-
-        template.afterPropertiesSet();
-        return template;
-    }
-
-    /**
-     * Generic RedisTemplate for other caching needs
+     * Generic RedisTemplate for caching
      */
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
@@ -52,10 +26,10 @@ public class RedisConfig {
         template.setKeySerializer(stringSerializer);
         template.setHashKeySerializer(stringSerializer);
 
-        // ✅ FIX: Use Jackson2JsonRedisSerializer with Object.class
-        Jackson2JsonRedisSerializer<Object> jsonSerializer = 
-            new Jackson2JsonRedisSerializer<>(objectMapper(), Object.class);
-        
+        // Value serializer
+        GenericJackson2JsonRedisSerializer jsonSerializer =
+                new GenericJackson2JsonRedisSerializer(objectMapper());
+
         template.setValueSerializer(jsonSerializer);
         template.setHashValueSerializer(jsonSerializer);
 

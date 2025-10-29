@@ -61,13 +61,12 @@ public class SecurityConfig {
                 .cors(cors -> cors.configure(http))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
-                                // Paths as received from gateway (rewritten - without /api/auth prefix)
-                                "/login",
-                                "/register",
-                                "/refresh",
-                                "/forgot-password",
-                                "/reset-password",
-                                "/verify-email",
+                                "/api/auth/login",
+                                "/api/auth/register",
+                                "/api/auth/refresh",
+                                "/api/auth/forgot-password",
+                                "/api/auth/reset-password",
+                                "/api/auth/verify-email",
                                 "/.well-known/jwks.json",     
                                 "/actuator/health",
                                 "/actuator/info",
@@ -96,14 +95,14 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configure(http))
                 .authorizeHttpRequests(auth -> auth
-                        // Public endpoints (paths as received from gateway - without /api/auth prefix)
+                        // Public endpoints
                         .requestMatchers(
-                                "/login",
-                                "/register",
-                                "/refresh",
-                                "/forgot-password",
-                                "/reset-password",
-                                "/verify-email",
+                                "/api/auth/login",
+                                "/api/auth/register",
+                                "/api/auth/refresh",
+                                "/api/auth/forgot-password",
+                                "/api/auth/reset-password",
+                                "/api/auth/verify-email",
                                 "/.well-known/jwks.json",
                                 "/actuator/health",
                                 "/actuator/info",
@@ -112,11 +111,11 @@ public class SecurityConfig {
                         ).permitAll()
 
                         // Admin endpoints
-                        .requestMatchers("/users/**", "/roles/**", "/permissions/**")
+                        .requestMatchers("/api/users/**", "/api/roles/**", "/api/permissions/**")
                         .hasRole("ADMIN")
 
                         // Audit endpoints
-                        .requestMatchers("/audit/**")
+                        .requestMatchers("/api/audit/**")
                         .hasAnyRole("ADMIN", "AUDITOR")
 
                         // All other requests require authentication

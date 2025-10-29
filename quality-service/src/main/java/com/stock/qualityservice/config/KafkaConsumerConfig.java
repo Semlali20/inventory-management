@@ -1,6 +1,8 @@
 package com.stock.qualityservice.config;
 
-import com.stock.inventoryservice.event.dto.ItemEvent;
+import com.stock.qualityservice.event.incoming.ItemCreatedEvent;
+import com.stock.qualityservice.event.incoming.ItemUpdatedEvent;
+import com.stock.qualityservice.event.incoming.CategoryCreatedEvent;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,10 +29,10 @@ public class KafkaConsumerConfig {
     private String groupId;
 
     /**
-     * Consumer Factory for ItemEvent
+     * Consumer Factory for ItemCreatedEvent
      */
     @Bean
-    public ConsumerFactory<String, ItemEvent> itemEventConsumerFactory() {
+    public ConsumerFactory<String, ItemCreatedEvent> itemCreatedEventConsumerFactory() {
         Map<String, Object> config = new HashMap<>();
 
         config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
@@ -38,36 +40,55 @@ public class KafkaConsumerConfig {
         config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
         config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-
-        // Error handling deserializer wraps the actual deserializer
         config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         config.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class.getName());
-
-        // JsonDeserializer configuration
         config.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
-        config.put(JsonDeserializer.VALUE_DEFAULT_TYPE, ItemEvent.class.getName());
+        config.put(JsonDeserializer.VALUE_DEFAULT_TYPE, ItemCreatedEvent.class.getName());
         config.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
 
         return new DefaultKafkaConsumerFactory<>(
                 config,
                 new StringDeserializer(),
-                new ErrorHandlingDeserializer<>(new JsonDeserializer<>(ItemEvent.class, false))
+                new ErrorHandlingDeserializer<>(new JsonDeserializer<>(ItemCreatedEvent.class, false))
         );
     }
 
     /**
-     * Kafka Listener Container Factory for ItemEvent
+     * Consumer Factory for ItemUpdatedEvent
      */
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, ItemEvent> kafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, ItemEvent> factory =
+    public ConsumerFactory<String, ItemUpdatedEvent> itemUpdatedEventConsumerFactory() {
+        Map<String, Object> config = new HashMap<>();
+
+        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        config.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, true);
+        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        config.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class.getName());
+        config.put(JsonDeserializer.TRUSTED_PACKAGES, "*");
+        config.put(JsonDeserializer.VALUE_DEFAULT_TYPE, ItemUpdatedEvent.class.getName());
+        config.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+
+        return new DefaultKafkaConsumerFactory<>(
+                config,
+                new StringDeserializer(),
+                new ErrorHandlingDeserializer<>(new JsonDeserializer<>(ItemUpdatedEvent.class, false))
+        );
+    }
+
+    /**
+     * Kafka Listener Container Factory for Item Events
+     */
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, ItemCreatedEvent> itemEventKafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, ItemCreatedEvent> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
 
-        factory.setConsumerFactory(itemEventConsumerFactory());
-        factory.setConcurrency(3); // 3 concurrent consumers
+        factory.setConsumerFactory(itemCreatedEventConsumerFactory());
+        factory.setConcurrency(3);
         factory.getContainerProperties().setPollTimeout(3000);
-
-        // Error handling
         factory.setCommonErrorHandler(new org.springframework.kafka.listener.DefaultErrorHandler());
 
         return factory;
