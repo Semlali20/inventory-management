@@ -1,0 +1,10 @@
+
+spring:
+  application:
+    name: alert-service
+
+server:
+  port: 8088
+  error:
+    include-message: always
+    include-binding-errors: always
