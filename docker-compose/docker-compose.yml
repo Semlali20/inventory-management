@@ -449,7 +449,7 @@ services:
     ports:
       - "8085:8085"
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      SPRING_PROFILES_ACTIVE: dev 
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-location:5432/location_db
       SPRING_DATASOURCE_USERNAME: location_user
       SPRING_DATASOURCE_PASSWORD: location_pass
@@ -484,7 +484,7 @@ services:
     ports:
       - "8082:8082"
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      SPRING_PROFILES_ACTIVE: dev  
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-product:5432/product_db
       SPRING_DATASOURCE_USERNAME: product_user
       SPRING_DATASOURCE_PASSWORD: product_pass
@@ -517,7 +517,7 @@ services:
       ports:
         - "8086:8086"
       environment:
-        SPRING_PROFILES_ACTIVE: docker
+        SPRING_PROFILES_ACTIVE: dev  
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-inventory:5432/inventory_db
         SPRING_DATASOURCE_USERNAME: inventory_user
         SPRING_DATASOURCE_PASSWORD: inventory_pass
@@ -543,7 +543,7 @@ services:
       ports:
         - "8084:8084"
       environment:
-        SPRING_PROFILES_ACTIVE: docker
+        SPRING_PROFILES_ACTIVE: dev  
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-movement:5432/movement_db
         SPRING_DATASOURCE_USERNAME: movement_user
         SPRING_DATASOURCE_PASSWORD: movement_pass
@@ -570,7 +570,7 @@ services:
       ports:
         - "8087:8087"
       environment:
-        SPRING_PROFILES_ACTIVE: docker
+        SPRING_PROFILES_ACTIVE: dev  
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-quality:5432/quality_db
         SPRING_DATASOURCE_USERNAME: quality_user
         SPRING_DATASOURCE_PASSWORD: quality_pass
@@ -597,7 +597,7 @@ services:
       ports:
         - "8088:8088"
       environment:
-        SPRING_PROFILES_ACTIVE: docker
+        SPRING_PROFILES_ACTIVE: dev  
         SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-alert:5432/alert_db
         SPRING_DATASOURCE_USERNAME: alert_user
         SPRING_DATASOURCE_PASSWORD: alert_pass
