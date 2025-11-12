@@ -44,42 +44,42 @@ public class GatewayConfig {
 
                 // Product Service
                 .route("product-service", r -> r
-                        .path("/api/item-variants/", "/api/categories/", "/api/items/")
+                        .path("/api/item-variants/**", "/api/categories/**", "/api/items/**")
                         .filters(f -> f
                                 .filter(jwtAuthenticationFilter.apply(new JwtAuthenticationFilter.Config())))
                         .uri(productServiceUrl))
 
                 // Inventory Service
                 .route("inventory-service", r -> r
-                        .path("/api/inventory/", "/api/lots/","/api/serials/", "/api/v1/admin/cache/items/")
+                        .path("/api/inventory/**", "/api/lots/**","/api/serials/**", "/api/v1/admin/cache/items/")
                         .filters(f -> f
                                 .filter(jwtAuthenticationFilter.apply(new JwtAuthenticationFilter.Config())))
                         .uri(inventoryServiceUrl))
 
                 // Movement Service
                 .route("movement-service", r -> r
-                        .path("/api/movement-tasks/", "/api/movement-lines/","/api/movements/")
+                        .path("/api/movement-tasks/**", "/api/movement-lines/**","/api/movements/**")
                         .filters(f -> f
                                 .filter(jwtAuthenticationFilter.apply(new JwtAuthenticationFilter.Config())))
                         .uri(movementServiceUrl))
 
                 // Location Service
                 .route("location-service", r -> r
-                        .path("/api/locations/", "/api/sites/", "/api/warehouses/")
+                        .path("/api/locations/**", "/api/sites/**", "/api/warehouses/**")
                         .filters(f -> f
                                 .filter(jwtAuthenticationFilter.apply(new JwtAuthenticationFilter.Config())))
                         .uri(locationServiceUrl))
 
                 // Quality Service
                 .route("quality-service", r -> r
-                        .path("/api/quality/", "/api/quality/controls/", "/api/quality/attachments/")
+                        .path("/api/quality/**", "/api/quality/controls/**", "/api/quality/attachments/**")
                         .filters(f -> f
                                 .filter(jwtAuthenticationFilter.apply(new JwtAuthenticationFilter.Config())))
                         .uri(qualityServiceUrl))
 
                 // alert service 
                 .route("alert-service", r -> r
-                        .path("/api/alerts/", "/api/notifications/", "/api/notification-channels/", "/api/notification-templates/", "/api/rules/")
+                        .path("/api/alerts/**", "/api/notifications/**", "/api/notification-channels/**", "/api/notification-templates/**", "/api/rules/**")
                         .filters(f -> f
                                 .filter(jwtAuthenticationFilter.apply(new JwtAuthenticationFilter.Config())))
                         .uri(alertServiceUrl))
