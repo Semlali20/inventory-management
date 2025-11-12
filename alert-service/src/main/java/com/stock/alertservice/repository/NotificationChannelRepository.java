@@ -54,12 +54,20 @@ public interface NotificationChannelRepository extends JpaRepository<Notificatio
 
     /**
      * Trouver le canal actif avec la plus haute priorité pour un type donné
+     * FIXED: Changed return type from Optional to List to work with Pageable
      */
     @Query("SELECT nc FROM NotificationChannel nc WHERE nc.channelType = :channelType " +
             "AND nc.isActive = true ORDER BY nc.priority ASC")
-    Optional<NotificationChannel> findTopPriorityActiveChannelByType(
+    List<NotificationChannel> findTopPriorityActiveChannelByType(
             @Param("channelType") NotificationChannelType channelType,
             Pageable pageable
+    );
+
+    /**
+     * Alternative: Find top priority channel without Pageable (simpler approach)
+     */
+    Optional<NotificationChannel> findFirstByChannelTypeAndIsActiveTrueOrderByPriorityAsc(
+            NotificationChannelType channelType
     );
 
     /**

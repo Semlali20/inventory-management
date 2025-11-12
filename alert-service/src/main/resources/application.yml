@@ -2,6 +2,8 @@
 spring:
   application:
     name: alert-service
+  profiles:
+    active: dev
 
 server:
   port: 8088

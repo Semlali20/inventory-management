@@ -52,11 +52,7 @@ public class Notification extends BaseEntity {
 
     @Column(name = "delivered_at")
     private LocalDateTime deliveredAt;
-    @Column(name = "alert_id")
-    private String alertId;
 
-    @Column(name = "template_id")
-    private String templateId;
     @Column(name = "retry_count")
     @Builder.Default
     private Integer retryCount = 0;

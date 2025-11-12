@@ -220,12 +220,25 @@ public class NotificationChannelServiceImpl implements NotificationChannelServic
     public NotificationChannelResponse getTopPriorityChannelByType(NotificationChannelType channelType) {
         log.info("Fetching top priority channel by type: {}", channelType);
 
+        // OPTION 1: Using List return type with Pageable
         Pageable pageable = PageRequest.of(0, 1);
-        NotificationChannel channel = channelRepository
-                .findTopPriorityActiveChannelByType(channelType, pageable)
-                .orElseThrow(() -> new NotificationChannelNotFoundException(
-                        String.format("No active channel found for type %s", channelType)
-                ));
+        List<NotificationChannel> channels = channelRepository
+                .findTopPriorityActiveChannelByType(channelType, pageable);
+
+        if (channels.isEmpty()) {
+            throw new NotificationChannelNotFoundException(
+                    String.format("No active channel found for type %s", channelType)
+            );
+        }
+
+        NotificationChannel channel = channels.get(0);
+
+        // OPTION 2: Using the simpler method without Pageable (RECOMMENDED)
+        // NotificationChannel channel = channelRepository
+        //         .findFirstByChannelTypeAndIsActiveTrueOrderByPriorityAsc(channelType)
+        //         .orElseThrow(() -> new NotificationChannelNotFoundException(
+        //                 String.format("No active channel found for type %s", channelType)
+        //         ));
 
         return mapToResponse(channel);
     }

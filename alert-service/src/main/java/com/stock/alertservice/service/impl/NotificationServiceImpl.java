@@ -77,14 +77,25 @@ public class NotificationServiceImpl implements NotificationService {
         String processedBody = templateService.processTemplate(template.getId(), variables);
 
         // Récupérer le canal avec la plus haute priorité
-        NotificationChannel channel = channelRepository
+        // OPTION 1: Using List return type with Pageable
+        List<NotificationChannel> channels = channelRepository
                 .findTopPriorityActiveChannelByType(
                         NotificationChannelType.EMAIL,
                         PageRequest.of(0, 1)
-                )
-                .orElseThrow(() -> new NotificationChannelNotFoundException(
-                        "No active EMAIL channel found"
-                ));
+                );
+
+        if (channels.isEmpty()) {
+            throw new NotificationChannelNotFoundException("No active EMAIL channel found");
+        }
+
+        NotificationChannel channel = channels.get(0);
+
+        // OPTION 2: Using the simpler method without Pageable (RECOMMENDED)
+        // NotificationChannel channel = channelRepository
+        //         .findFirstByChannelTypeAndIsActiveTrueOrderByPriorityAsc(NotificationChannelType.EMAIL)
+        //         .orElseThrow(() -> new NotificationChannelNotFoundException(
+        //                 "No active EMAIL channel found"
+        //         ));
 
         // Vérifier le rate limit
         checkRateLimit(channel);
@@ -101,6 +112,7 @@ public class NotificationServiceImpl implements NotificationService {
         );
     }
 
+
     @Override
     public NotificationResponse sendNotification(
             NotificationChannelType channelType,
@@ -112,6 +124,20 @@ public class NotificationServiceImpl implements NotificationService {
 
         log.info("Sending {} notification to: {}", channelType, recipient);
 
+        // Fetch the Alert entity if alertId is provided
+        Alert alert = null;
+        if (alertId != null) {
+            alert = alertRepository.findById(alertId)
+                    .orElseThrow(() -> new AlertNotFoundException(alertId));
+        }
+
+        // Fetch the Template entity if templateId is provided
+        NotificationTemplate template = null;
+        if (templateId != null) {
+            template = templateRepository.findById(templateId)
+                    .orElseThrow(() -> new NotificationTemplateNotFoundException(templateId));
+        }
+
         // Créer la notification
         Notification notification = Notification.builder()
                 .channelType(channelType)
@@ -120,8 +146,8 @@ public class NotificationServiceImpl implements NotificationService {
                 .body(body)
                 .status(NotificationStatus.PENDING)
                 .retryCount(0)
-                .alertId(alertId)
-                .templateId(templateId)
+                .alert(alert)
+                .template(template)
                 .build();
 
         Notification savedNotification = notificationRepository.save(notification);
@@ -134,11 +160,9 @@ public class NotificationServiceImpl implements NotificationService {
             savedNotification.setSentAt(LocalDateTime.now());
 
             // Incrémenter les compteurs
-            if (templateId != null) {
-                templateRepository.findById(templateId).ifPresent(template -> {
-                    template.setTotalNotificationsSent(template.getTotalNotificationsSent() + 1);
-                    templateRepository.save(template);
-                });
+            if (template != null) {
+                template.setTotalNotificationsSent(template.getTotalNotificationsSent() + 1);
+                templateRepository.save(template);
             }
 
             NotificationChannel channel = channelRepository
@@ -218,7 +242,7 @@ public class NotificationServiceImpl implements NotificationService {
     public List<NotificationResponse> getNotificationsByAlert(String alertId) {
         log.info("Fetching notifications by alert: {}", alertId);
 
-        return notificationRepository.findByAlertId(alertId).stream()
+        return notificationRepository.findByAlert_Id(alertId).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
@@ -483,8 +507,8 @@ public class NotificationServiceImpl implements NotificationService {
                 .retryCount(notification.getRetryCount())
                 .errorMessage(notification.getErrorMessage())
                 .metadata(notification.getMetadata())
-                .alertId(notification.getAlertId())
-                .templateId(notification.getTemplateId())
+                .alertId(notification.getAlert() != null ? notification.getAlert().getId() : null)
+                .templateId(notification.getTemplate() != null ? notification.getTemplate().getId() : null)
                 .createdAt(notification.getCreatedAt())
                 .updatedAt(notification.getUpdatedAt())
                 .build();

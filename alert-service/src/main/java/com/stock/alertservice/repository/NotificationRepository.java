@@ -22,7 +22,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     /**
      * Trouver les notifications par alerte
      */
-    List<Notification> findByAlertId(String alertId);
+    List<Notification> findByAlert_Id(String alertId);
 
     /**
      * Trouver les notifications par statut
@@ -70,7 +70,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     /**
      * Compter les notifications par alerte
      */
-    long countByAlertId(String alertId);
+    long countByAlert_Id(String alertId);
 
     /**
      * Compter les notifications envoyées après une date
@@ -94,7 +94,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
             "(:status IS NULL OR n.status = :status) AND " +
             "(:channelType IS NULL OR n.channelType = :channelType) AND " +
             "(:recipient IS NULL OR n.recipient = :recipient) AND " +
-            "(:alertId IS NULL OR n.alertId = :alertId) AND " +
+            "(:alertId IS NULL OR n.alert.id = :alertId) AND " +
             "(:createdAfter IS NULL OR n.createdAt >= :createdAfter) AND " +
             "(:createdBefore IS NULL OR n.createdAt <= :createdBefore)")
     Page<Notification> searchNotifications(
