@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '@/store/hooks';
@@ -30,8 +30,26 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
   const { user } = useAppSelector((state) => state.auth);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(() => {
+    // Initialize from localStorage or system preference
+    const saved = localStorage.getItem('theme');
+    if (saved) {
+      return saved === 'dark';
+    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Apply dark mode class to document element
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDark]);
 
   // Mock notifications
   const notifications = [
@@ -56,7 +74,7 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
 
   const toggleTheme = () => {
     setIsDark(!isDark);
-    toast.success(isDark ? 'Light mode activated' : 'Dark mode activated');
+    toast.success(!isDark ? 'Dark mode activated' : 'Light mode activated');
   };
 
   const getUserInitials = () => {
