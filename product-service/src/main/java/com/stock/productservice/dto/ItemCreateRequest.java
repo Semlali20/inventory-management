@@ -30,7 +30,7 @@ public class ItemCreateRequest {
     @Size(max = 500, message = "Tags must not exceed 500 characters")
     private String tags;
 
-    @Size(max = 500, message = "Image URL must not exceed 500 characters")
+    @Size( message = "Image URL must not exceed 500 characters")
     private String imageUrl;
 
     private Boolean isSerialized;

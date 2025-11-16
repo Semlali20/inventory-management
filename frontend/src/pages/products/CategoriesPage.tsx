@@ -29,11 +29,15 @@ export const CategoriesPage = () => {
     setLoading(true);
     try {
       const data = await productService.getCategories();
-      setCategories(data);
-      setFilteredCategories(data);
+      // Handle both array response and paginated response
+      const categoriesArray = Array.isArray(data) ? data : (data?.content || []);
+      setCategories(categoriesArray);
+      setFilteredCategories(categoriesArray);
     } catch (error) {
       toast.error('Failed to fetch categories');
       console.error(error);
+      setCategories([]);
+      setFilteredCategories([]);
     } finally {
       setLoading(false);
     }
@@ -85,6 +89,7 @@ export const CategoriesPage = () => {
       toast.success('Category deleted successfully');
       fetchCategories();
       setIsDeleteDialogOpen(false);
+      setSelectedCategory(null);
     } catch (error) {
       toast.error('Failed to delete category');
       console.error(error);
@@ -95,6 +100,7 @@ export const CategoriesPage = () => {
     fetchCategories();
     setIsCreateModalOpen(false);
     setIsEditModalOpen(false);
+    setSelectedCategory(null);
   };
 
   return (
@@ -171,11 +177,15 @@ export const CategoriesPage = () => {
                         <div className="text-sm font-medium text-gray-900">{category.name}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-500">{category.description || '-'}</div>
+                        <div className="text-sm text-gray-900 max-w-xs truncate">
+                          {category.description || '-'}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {category.parentCategoryId || '-'}
+                        <div className="text-sm text-gray-900">
+                          {category.parentCategoryId
+                            ? categories.find((c) => c.id === category.parentCategoryId)?.name || '-'
+                            : '-'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -226,14 +236,20 @@ export const CategoriesPage = () => {
       {/* Modals */}
       <CategoryFormModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setSelectedCategory(null);
+        }}
         onSuccess={handleFormSuccess}
         mode="create"
       />
 
       <CategoryFormModal
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedCategory(null);
+        }}
         onSuccess={handleFormSuccess}
         mode="edit"
         category={selectedCategory}
@@ -241,7 +257,10 @@ export const CategoriesPage = () => {
 
       <CategoryDetailModal
         isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedCategory(null);
+        }}
         category={selectedCategory}
         onEdit={() => {
           setIsDetailModalOpen(false);
@@ -251,7 +270,10 @@ export const CategoriesPage = () => {
 
       <DeleteConfirmDialog
         isOpen={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
+        onClose={() => {
+          setIsDeleteDialogOpen(false);
+          setSelectedCategory(null);
+        }}
         onConfirm={confirmDelete}
         title="Delete Category"
         message={`Are you sure you want to delete "${selectedCategory?.name}"? This action cannot be undone.`}

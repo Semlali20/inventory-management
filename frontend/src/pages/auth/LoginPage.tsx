@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAppDispatch } from '@/store/hooks';
@@ -20,6 +20,14 @@ import { GradientButton } from '@/components/ui/GradientButton';
 import { ROUTES } from '@/config/constants';
 import toast from 'react-hot-toast';
 
+// Constants for Remember Me functionality
+const REMEMBER_ME_KEY = 'remember_me_credentials';
+
+interface RememberedCredentials {
+  usernameOrEmail: string;
+  remember: boolean;
+}
+
 export const LoginPage = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -31,6 +39,30 @@ export const LoginPage = () => {
     remember: false,
   });
 
+  // Load remembered credentials on component mount
+  useEffect(() => {
+    const loadRememberedCredentials = () => {
+      try {
+        const remembered = localStorage.getItem(REMEMBER_ME_KEY);
+        if (remembered) {
+          const credentials: RememberedCredentials = JSON.parse(remembered);
+          setFormData(prev => ({
+            ...prev,
+            usernameOrEmail: credentials.usernameOrEmail,
+            remember: credentials.remember,
+          }));
+          console.log('Loaded remembered credentials:', credentials.usernameOrEmail);
+        }
+      } catch (error) {
+        console.error('Error loading remembered credentials:', error);
+        // If there's an error, clean up the corrupted data
+        localStorage.removeItem(REMEMBER_ME_KEY);
+      }
+    };
+
+    loadRememberedCredentials();
+  }, []);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -41,6 +73,21 @@ export const LoginPage = () => {
         usernameOrEmail: formData.usernameOrEmail,
         password: formData.password,
       });
+
+      // Handle Remember Me functionality
+      if (formData.remember) {
+        // Save credentials to localStorage (NOT password for security)
+        const credentialsToRemember: RememberedCredentials = {
+          usernameOrEmail: formData.usernameOrEmail,
+          remember: true,
+        };
+        localStorage.setItem(REMEMBER_ME_KEY, JSON.stringify(credentialsToRemember));
+        console.log('Saved credentials to Remember Me');
+      } else {
+        // Clear remembered credentials if unchecked
+        localStorage.removeItem(REMEMBER_ME_KEY);
+        console.log('Cleared Remember Me credentials');
+      }
 
       // Store user in Redux
       dispatch(setUser(response.user));
@@ -166,47 +213,53 @@ export const LoginPage = () => {
             intuitive platform designed for modern businesses.
           </motion.p>
 
-          {/* Features Grid */}
-          <div className="grid grid-cols-2 gap-6">
-            {features.map((feature, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 + index * 0.1 }}
-                whileHover={{ scale: 1.05, y: -5 }}
-                className="card-glass p-5 group cursor-pointer"
-              >
-                <div className="p-2 bg-white/10 rounded-lg w-fit mb-3 group-hover:bg-white/20 transition-all">
-                  <feature.icon className="w-5 h-5 text-accent-teal" />
-                </div>
-                <h3 className="text-white font-semibold mb-1">
-                  {feature.title}
-                </h3>
-                <p className="text-sm text-neutral-400">
-                  {feature.description}
-                </p>
-              </motion.div>
-            ))}
-          </div>
+          {/* Features */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+            className="grid grid-cols-2 gap-6"
+          >
+            {features.map((feature, index) => {
+              const Icon = feature.icon;
+              return (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6 + index * 0.1 }}
+                  whileHover={{ scale: 1.05 }}
+                  className="flex items-start gap-3 p-4 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10 hover:bg-white/10 transition-all"
+                >
+                  <div className="p-2 bg-gradient-to-br from-primary-400 to-accent-teal rounded-lg">
+                    <Icon className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold mb-1">{feature.title}</h3>
+                    <p className="text-sm text-neutral-400">{feature.description}</p>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </motion.div>
 
           {/* Stats */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 1 }}
-            className="flex gap-8 mt-12 pt-8 border-t border-white/10"
+            transition={{ delay: 0.8 }}
+            className="flex gap-8 mt-12"
           >
             {[
-              { label: 'Active Users', value: '50K+' },
-              { label: 'Products Managed', value: '2M+' },
-              { label: 'Uptime', value: '99.9%' },
-            ].map((stat, i) => (
-              <div key={i}>
-                <div className="text-3xl font-bold text-white mb-1">
+              { value: '10K+', label: 'Active Users' },
+              { value: '99.9%', label: 'Uptime' },
+              { value: '24/7', label: 'Support' },
+            ].map((stat, index) => (
+              <div key={index} className="text-center">
+                <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-accent-teal to-primary-400">
                   {stat.value}
                 </div>
-                <div className="text-sm text-neutral-400">{stat.label}</div>
+                <div className="text-sm text-neutral-400 mt-1">{stat.label}</div>
               </div>
             ))}
           </motion.div>
@@ -214,25 +267,22 @@ export const LoginPage = () => {
       </div>
 
       {/* Right Side - Login Form */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 relative z-10">
+      <div className="w-full lg:w-1/2 relative z-10 flex items-center justify-center p-6 lg:p-12">
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
-          {/* Glassmorphism Card */}
-          <div className="card-glass p-8 sm:p-10 backdrop-blur-2xl border border-white/20 shadow-3d-2xl">
+          {/* Card */}
+          <div className="backdrop-blur-xl bg-white/10 rounded-3xl shadow-3d-xl border border-white/20 p-8 lg:p-10">
             {/* Header */}
             <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="text-center mb-8"
+              className="mb-8"
             >
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-accent-teal mb-4 shadow-glow-accent">
-                <Sparkles className="w-8 h-8 text-white" />
-              </div>
               <h2 className="text-3xl font-bold text-white mb-2">
                 Welcome Back
               </h2>
@@ -243,7 +293,7 @@ export const LoginPage = () => {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Username or Email Field */}
+              {/* Username/Email Field */}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -318,7 +368,7 @@ export const LoginPage = () => {
                     onChange={(e) =>
                       setFormData({ ...formData, remember: e.target.checked })
                     }
-                    className="w-4 h-4 rounded border-2 border-white/30 bg-white/10 checked:bg-accent-teal checked:border-accent-teal transition-all"
+                    className="w-4 h-4 rounded border-2 border-white/30 bg-white/10 checked:bg-accent-teal checked:border-accent-teal transition-all cursor-pointer"
                   />
                   <span className="text-sm text-neutral-300 group-hover:text-white transition-colors">
                     Remember me
@@ -364,25 +414,51 @@ export const LoginPage = () => {
                 to={ROUTES.REGISTER}
                 className="text-accent-teal hover:text-accent-teal-light font-semibold transition-colors"
               >
-                Sign up for free
+                Sign up
               </Link>
             </motion.p>
+
+            {/* Divider */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.8 }}
+              className="relative my-8"
+            >
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 text-neutral-400 bg-transparent">
+                  Secure login powered by JWT
+                </span>
+              </div>
+            </motion.div>
+
+            {/* Footer Info */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.9 }}
+              className="text-center"
+            >
+              <div className="flex items-center justify-center gap-2 text-sm text-neutral-400">
+                <Shield className="w-4 h-4" />
+                <span>Your data is encrypted and secure</span>
+              </div>
+            </motion.div>
           </div>
 
-          {/* Trust Badges */}
+          {/* Mobile Logo */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            className="mt-6 text-center"
+            transition={{ delay: 1 }}
+            className="lg:hidden mt-8 text-center"
           >
-            <p className="text-xs text-neutral-500 mb-3">
-              Trusted by leading companies worldwide
-            </p>
-            <div className="flex justify-center items-center gap-6 opacity-50">
-              <Shield className="w-6 h-6 text-white" />
-              <div className="text-white font-bold">256-bit SSL</div>
-              <Lock className="w-5 h-5 text-white" />
+            <div className="flex items-center justify-center gap-2 text-neutral-400">
+              <Package className="w-5 h-5" />
+              <span className="font-semibold">StockFlow</span>
             </div>
           </motion.div>
         </motion.div>

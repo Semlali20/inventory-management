@@ -1,7 +1,7 @@
 // src/pages/products/ItemsPage.tsx
 
 import { useState, useEffect } from 'react';
-import { Plus, Search, Edit, Trash2, Eye, Filter } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Eye } from 'lucide-react';
 import { productService } from '@/services/product.service';
 import { Item } from '@/types';
 import { Button } from '@/components/ui/Button';
@@ -33,11 +33,15 @@ export const ItemsPage = () => {
     setLoading(true);
     try {
       const data = await productService.getItems();
-      setItems(data);
-      setFilteredItems(data);
+      // Handle both array response and paginated response
+      const itemsArray = Array.isArray(data) ? data : (data?.content || []);
+      setItems(itemsArray);
+      setFilteredItems(itemsArray);
     } catch (error) {
       toast.error('Failed to fetch items');
       console.error(error);
+      setItems([]);
+      setFilteredItems([]);
     } finally {
       setLoading(false);
     }
@@ -46,9 +50,12 @@ export const ItemsPage = () => {
   const fetchCategories = async () => {
     try {
       const data = await productService.getCategories();
-      setCategories(data);
+      // Handle both array response and paginated response
+      const categoriesArray = Array.isArray(data) ? data : (data?.content || []);
+      setCategories(categoriesArray);
     } catch (error) {
       console.error('Failed to fetch categories:', error);
+      setCategories([]);
     }
   };
 
@@ -66,7 +73,7 @@ export const ItemsPage = () => {
       filtered = filtered.filter(
         (item) =>
           item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          item.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           item.description?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
@@ -114,6 +121,7 @@ export const ItemsPage = () => {
       toast.success('Item deleted successfully');
       fetchItems();
       setIsDeleteDialogOpen(false);
+      setSelectedItem(null);
     } catch (error) {
       toast.error('Failed to delete item');
       console.error(error);
@@ -124,6 +132,7 @@ export const ItemsPage = () => {
     fetchItems();
     setIsCreateModalOpen(false);
     setIsEditModalOpen(false);
+    setSelectedItem(null);
   };
 
   return (
@@ -189,16 +198,16 @@ export const ItemsPage = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    SKU
+                    Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
+                    SKU
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Category
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    UOM
+                    Description
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -219,17 +228,20 @@ export const ItemsPage = () => {
                   filteredItems.map((item) => (
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{item.sku}</div>
+                        <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">{item.sku || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {categories.find((c) => c.id === item.categoryId)?.name || '-'}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                        <div className="text-sm text-gray-500">{item.description}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">{item.categoryName || '-'}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">{item.unitOfMeasure || '-'}</div>
+                        <div className="text-sm text-gray-900 max-w-xs truncate">
+                          {item.description || '-'}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
@@ -279,14 +291,20 @@ export const ItemsPage = () => {
       {/* Modals */}
       <ItemFormModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setSelectedItem(null);
+        }}
         onSuccess={handleFormSuccess}
         mode="create"
       />
 
       <ItemFormModal
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedItem(null);
+        }}
         onSuccess={handleFormSuccess}
         mode="edit"
         item={selectedItem}
@@ -294,7 +312,10 @@ export const ItemsPage = () => {
 
       <ItemDetailModal
         isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedItem(null);
+        }}
         item={selectedItem}
         onEdit={() => {
           setIsDetailModalOpen(false);
@@ -304,7 +325,10 @@ export const ItemsPage = () => {
 
       <DeleteConfirmDialog
         isOpen={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
+        onClose={() => {
+          setIsDeleteDialogOpen(false);
+          setSelectedItem(null);
+        }}
         onConfirm={confirmDelete}
         title="Delete Item"
         message={`Are you sure you want to delete "${selectedItem?.name}"? This action cannot be undone.`}

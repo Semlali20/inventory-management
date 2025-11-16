@@ -45,7 +45,7 @@ public class Item {
     @Column(length = 500)
     private String tags;
 
-    @Column(name = "image_url", length = 500)
+    @Column(name = "image_url", columnDefinition = "TEXT")
     private String imageUrl;
 
     @Column(name = "is_serialized", nullable = false)

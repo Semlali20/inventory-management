@@ -14,6 +14,9 @@ import {
 } from '@/types';
 import { storage } from '@/utils/storage';
 
+// Remember Me key - should match LoginPage
+const REMEMBER_ME_KEY = 'remember_me_credentials';
+
 export const authService = {
   login: async (credentials: LoginRequest): Promise<LoginResponse> => {
     const response = await apiClient.post<LoginResponse>(
@@ -49,10 +52,15 @@ export const authService = {
         }
       );
       
-      // Clear storage
+      // Clear all storage including Remember Me if needed
       storage.remove(STORAGE_KEYS.ACCESS_TOKEN);
       storage.remove(STORAGE_KEYS.REFRESH_TOKEN);
       storage.remove(STORAGE_KEYS.USER);
+      
+      // Note: We DON'T clear REMEMBER_ME_KEY on logout
+      // This allows users to keep their username remembered even after logout
+      // Only clear it if you want to forget the username on logout:
+      // localStorage.removeItem(REMEMBER_ME_KEY);
       
       return response.data;
     } catch (error) {
@@ -106,6 +114,7 @@ export const authService = {
     );
     return response.data;
   },
+  
   resendVerificationEmail: async (email: string): Promise<ApiResponse<void>> => {
     const response = await apiClient.post<ApiResponse<void>>(
       '/api/auth/resend-verification',
@@ -113,6 +122,7 @@ export const authService = {
     );
     return response.data;
   },
+  
   getCurrentUser: (): User | null => {
     return storage.get<User>(STORAGE_KEYS.USER);
   },
@@ -124,5 +134,9 @@ export const authService = {
   isAuthenticated: (): boolean => {
     return !!storage.get<string>(STORAGE_KEYS.ACCESS_TOKEN);
   },
-};
 
+  // Helper method to clear Remember Me if needed
+  clearRememberMe: (): void => {
+    localStorage.removeItem(REMEMBER_ME_KEY);
+  },
+};

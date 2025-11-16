@@ -1,32 +1,658 @@
 // src/components/items/ItemFormModal.tsx
-import React from 'react';
-import { Modal } from '@/components/ui/Modal';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import React, { useState, useEffect } from 'react';
+import { X, Upload, Image as ImageIcon } from 'lucide-react';
+import { productService } from '@/services/product.service';
+import { Item } from '@/types';
+import { toast } from 'react-hot-toast';
 
 interface ItemFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
-  initialData?: any;
+  onSuccess: () => void;
+  mode: 'create' | 'edit';
+  item?: Item | null;
+}
+
+interface CategoryAttributeSchema {
+  name: string;
+  type: string;
+  required: boolean;
+}
+
+interface DynamicAttribute {
+  name: string;
+  type: string;
+  required: boolean;
+  value: string;
 }
 
 export const ItemFormModal: React.FC<ItemFormModalProps> = ({
   isOpen,
   onClose,
-  onSubmit,
-  initialData
+  onSuccess,
+  mode,
+  item
 }) => {
-  // Add your form logic here
+  const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [imagePreview, setImagePreview] = useState<string>('');
   
+  // Form data
+  const [formData, setFormData] = useState({
+    categoryId: '',
+    sku: '',
+    name: '',
+    description: '',
+    tags: '',
+    isSerialized: false,
+    isLotManaged: false,
+    shelfLifeDays: 0,
+    hazardousMaterial: false,
+  });
+
+  // Dynamic attributes based on category schema
+  const [dynamicAttributes, setDynamicAttributes] = useState<DynamicAttribute[]>([]);
+  
+  // Temperature controls
+  const [temperatureControls, setTemperatureControls] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchCategories();
+      
+      if (mode === 'edit' && item) {
+        // EDIT MODE - Populate form with item data
+        setFormData({
+          categoryId: item.categoryId || '',
+          sku: item.sku || '',
+          name: item.name || '',
+          description: item.description || '',
+          tags: item.tags || '',
+          isSerialized: item.isSerialized || false,
+          isLotManaged: item.isLotManaged || false,
+          shelfLifeDays: item.shelfLifeDays || 0,
+          hazardousMaterial: item.hazardousMaterial || false,
+        });
+
+        // Parse existing attributes
+        try {
+          if (item.attributes) {
+            const parsed = typeof item.attributes === 'string' 
+              ? JSON.parse(item.attributes) 
+              : item.attributes;
+            
+            // Will be populated after category is loaded
+            if (item.categoryId) {
+              loadCategoryAndAttributes(item.categoryId, parsed);
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing attributes:', error);
+        }
+
+        // Parse temperature controls
+        try {
+          if (item.temperatureControl) {
+            const parsed = typeof item.temperatureControl === 'string'
+              ? JSON.parse(item.temperatureControl)
+              : item.temperatureControl;
+            
+            if (Array.isArray(parsed)) {
+              setTemperatureControls(parsed);
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing temperature controls:', error);
+        }
+
+        // Set image preview
+        if (item.imageUrl) {
+          setImagePreview(item.imageUrl);
+        }
+      } else {
+        // CREATE MODE - Reset form
+        resetForm();
+      }
+    }
+  }, [isOpen, mode, item]);
+
+  const resetForm = () => {
+    setFormData({
+      categoryId: '',
+      sku: '',
+      name: '',
+      description: '',
+      tags: '',
+      isSerialized: false,
+      isLotManaged: false,
+      shelfLifeDays: 0,
+      hazardousMaterial: false,
+    });
+    setDynamicAttributes([]);
+    setTemperatureControls([]);
+    setImagePreview('');
+    setSelectedCategory(null);
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await productService.getCategories();
+      const data = Array.isArray(response) ? response : response?.content || [];
+      setCategories(data);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+      setCategories([]);
+    }
+  };
+
+  const loadCategoryAndAttributes = async (categoryId: string, existingValues?: any) => {
+    try {
+      const category = await productService.getCategoryById(categoryId);
+      setSelectedCategory(category);
+      
+      // Parse attribute schemas from category
+      if (category.attributeSchemas) {
+        try {
+          const schemas = typeof category.attributeSchemas === 'string'
+            ? JSON.parse(category.attributeSchemas)
+            : category.attributeSchemas;
+          
+          if (schemas.attributeSchemas && Array.isArray(schemas.attributeSchemas)) {
+            const attrs: DynamicAttribute[] = schemas.attributeSchemas.map((schema: CategoryAttributeSchema) => ({
+              name: schema.name,
+              type: schema.type,
+              required: schema.required,
+              value: existingValues?.[schema.name] || ''
+            }));
+            setDynamicAttributes(attrs);
+          } else {
+            setDynamicAttributes([]);
+          }
+        } catch (error) {
+          console.error('Error parsing attribute schemas:', error);
+          setDynamicAttributes([]);
+        }
+      } else {
+        setDynamicAttributes([]);
+      }
+    } catch (error) {
+      console.error('Failed to load category:', error);
+      setDynamicAttributes([]);
+    }
+  };
+
+  const handleCategoryChange = async (categoryId: string) => {
+    setFormData({ ...formData, categoryId });
+    if (categoryId) {
+      await loadCategoryAndAttributes(categoryId);
+    } else {
+      setSelectedCategory(null);
+      setDynamicAttributes([]);
+    }
+  };
+
+  const updateDynamicAttribute = (index: number, value: string) => {
+    const updated = [...dynamicAttributes];
+    updated[index].value = value;
+    setDynamicAttributes(updated);
+  };
+
+  const addTemperatureControl = () => {
+    setTemperatureControls([...temperatureControls, '']);
+  };
+
+  const removeTemperatureControl = (index: number) => {
+    setTemperatureControls(temperatureControls.filter((_, i) => i !== index));
+  };
+
+  const updateTemperatureControl = (index: number, value: string) => {
+    const updated = [...temperatureControls];
+    updated[index] = value;
+    setTemperatureControls(updated);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Image size must be less than 5MB');
+        return;
+      }
+
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select an image file');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setImagePreview(base64String);
+      };
+      reader.onerror = () => {
+        toast.error('Failed to read image file');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setImagePreview('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate required dynamic attributes
+    const missingRequired = dynamicAttributes
+      .filter(attr => attr.required && !attr.value.trim())
+      .map(attr => attr.name);
+    
+    if (missingRequired.length > 0) {
+      toast.error(`Required attributes missing: ${missingRequired.join(', ')}`);
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Convert dynamic attributes to JSON object
+      const attributesObj: Record<string, any> = {};
+      dynamicAttributes.forEach(attr => {
+        if (attr.value) {
+          // Convert value based on type
+          if (attr.type === 'number') {
+            attributesObj[attr.name] = parseFloat(attr.value) || 0;
+          } else if (attr.type === 'boolean') {
+            attributesObj[attr.name] = attr.value === 'true';
+          } else {
+            attributesObj[attr.name] = attr.value;
+          }
+        }
+      });
+      const attributesJson = Object.keys(attributesObj).length > 0
+        ? JSON.stringify(attributesObj)
+        : null;
+
+      // Convert temperature controls
+      const tempArray = temperatureControls.filter(tc => tc.trim() !== '');
+      const temperatureControlJson = tempArray.length > 0
+        ? JSON.stringify(tempArray)
+        : null;
+
+      const requestData = {
+        categoryId: formData.categoryId,
+        sku: formData.sku,
+        name: formData.name,
+        description: formData.description || null,
+        attributes: attributesJson,
+        tags: formData.tags || null,
+        imageUrl: imagePreview || null,
+        isSerialized: formData.isSerialized,
+        isLotManaged: formData.isLotManaged,
+        shelfLifeDays: formData.shelfLifeDays > 0 ? formData.shelfLifeDays : null,
+        hazardousMaterial: formData.hazardousMaterial,
+        temperatureControl: temperatureControlJson
+      };
+
+      if (mode === 'edit' && item) {
+        await productService.updateItem(item.id, requestData);
+        toast.success('Item updated successfully');
+      } else {
+        await productService.createItem(requestData);
+        toast.success('Item created successfully');
+      }
+      
+      onSuccess();
+      onClose();
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.message || 'Operation failed';
+      toast.error(errorMessage);
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
-      <div className="p-6">
-        <h2 className="text-xl font-bold mb-4">
-          {initialData ? 'Edit Item' : 'Create Item'}
-        </h2>
-        {/* Add your form fields here */}
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center p-6 border-b">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {mode === 'edit' ? 'Edit Item' : 'Create Item'}
+          </h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={24} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left & Center Columns - Form Fields */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Category & SKU */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Category <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={formData.categoryId}
+                    onChange={(e) => handleCategoryChange(e.target.value)}
+                    required
+                  >
+                    <option value="">Select a category</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    SKU <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                    value={formData.sku}
+                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                    required
+                    maxLength={50}
+                    placeholder="e.g., ITEM-001"
+                    disabled={mode === 'edit'}
+                  />
+                </div>
+              </div>
+
+              {/* Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                  maxLength={200}
+                  placeholder="Item name"
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Description
+                </label>
+                <textarea
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="Item description..."
+                />
+              </div>
+
+              {/* Dynamic Attributes from Category Schema */}
+              {selectedCategory && (
+                <div className="border-t pt-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    📋 Category Attributes
+                    {selectedCategory && (
+                      <span className="text-sm font-normal text-gray-500 ml-2">
+                        (from {selectedCategory.name})
+                      </span>
+                    )}
+                  </h3>
+
+                  {dynamicAttributes.length === 0 ? (
+                    <div className="p-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-center">
+                      <p className="text-gray-500 text-sm">
+                        No attributes defined for this category.
+                      </p>
+                      <p className="text-gray-400 text-xs mt-1">
+                        You can edit the category to add attribute schemas.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {dynamicAttributes.map((attr, index) => (
+                        <div key={index} className="space-y-1">
+                          <label className="block text-sm font-medium text-gray-700">
+                            {attr.name}
+                            {attr.required && <span className="text-red-500 ml-1">*</span>}
+                            <span className="text-xs text-gray-500 ml-2">({attr.type})</span>
+                          </label>
+                          
+                          {attr.type === 'boolean' ? (
+                            <select
+                              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              value={attr.value}
+                              onChange={(e) => updateDynamicAttribute(index, e.target.value)}
+                              required={attr.required}
+                            >
+                              <option value="">Select...</option>
+                              <option value="true">Yes</option>
+                              <option value="false">No</option>
+                            </select>
+                          ) : attr.type === 'number' ? (
+                            <input
+                              type="number"
+                              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              value={attr.value}
+                              onChange={(e) => updateDynamicAttribute(index, e.target.value)}
+                              required={attr.required}
+                              step="any"
+                              placeholder={`Enter ${attr.name}`}
+                            />
+                          ) : attr.type === 'date' ? (
+                            <input
+                              type="date"
+                              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              value={attr.value}
+                              onChange={(e) => updateDynamicAttribute(index, e.target.value)}
+                              required={attr.required}
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              value={attr.value}
+                              onChange={(e) => updateDynamicAttribute(index, e.target.value)}
+                              required={attr.required}
+                              placeholder={`Enter ${attr.name}`}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tags */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Tags
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={formData.tags}
+                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                  maxLength={500}
+                  placeholder="tag1, tag2, tag3"
+                />
+              </div>
+
+              {/* Temperature Controls */}
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Temperature Controls
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addTemperatureControl}
+                    className="text-sm px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    + Add
+                  </button>
+                </div>
+
+                {temperatureControls.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">No temperature controls</p>
+                ) : (
+                  <div className="space-y-2">
+                    {temperatureControls.map((tc, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input
+                          type="text"
+                          className="flex-1 border border-gray-300 rounded-lg px-4 py-2"
+                          value={tc}
+                          onChange={(e) => updateTemperatureControl(index, e.target.value)}
+                          placeholder="e.g., 2-8°C, REFRIGERATED"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeTemperatureControl(index)}
+                          className="px-3 py-2 text-red-600 hover:bg-red-50 rounded"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Shelf Life */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Shelf Life (Days)
+                </label>
+                <input
+                  type="number"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  value={formData.shelfLifeDays}
+                  onChange={(e) => setFormData({ ...formData, shelfLifeDays: parseInt(e.target.value) || 0 })}
+                  min={0}
+                  placeholder="0 for non-perishable"
+                />
+              </div>
+
+              {/* Checkboxes */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 rounded"
+                    checked={formData.isSerialized}
+                    onChange={(e) => setFormData({ ...formData, isSerialized: e.target.checked })}
+                  />
+                  <span className="text-sm">Is Serialized</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 rounded"
+                    checked={formData.isLotManaged}
+                    onChange={(e) => setFormData({ ...formData, isLotManaged: e.target.checked })}
+                  />
+                  <span className="text-sm">Is Lot Managed</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 rounded"
+                    checked={formData.hazardousMaterial}
+                    onChange={(e) => setFormData({ ...formData, hazardousMaterial: e.target.checked })}
+                  />
+                  <span className="text-sm">Hazardous Material</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Right Column - Image Upload */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Item Image
+                </label>
+                
+                {imagePreview ? (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="w-full h-64 object-cover rounded-lg border-2 border-gray-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute top-2 right-2 bg-red-600 text-white p-2 rounded-full hover:bg-red-700 shadow-lg"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <ImageIcon className="w-12 h-12 mb-3 text-gray-400" />
+                      <p className="mb-2 text-sm text-gray-500">
+                        <span className="font-semibold">Click to upload</span>
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        PNG, JPG, GIF up to 5MB
+                      </p>
+                    </div>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                    />
+                  </label>
+                )}
+                
+                <p className="text-xs text-gray-500 mt-2">
+                  Image will be converted to Base64
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Form Actions */}
+          <div className="flex justify-end gap-3 pt-6 mt-6 border-t">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              disabled={loading}
+            >
+              {loading ? 'Saving...' : (mode === 'edit' ? 'Update' : 'Create')}
+            </button>
+          </div>
+        </form>
       </div>
-    </Modal>
+    </div>
   );
 };

@@ -33,11 +33,15 @@ export const ItemVariantsPage = () => {
     setLoading(true);
     try {
       const data = await productService.getItemVariants();
-      setVariants(data);
-      setFilteredVariants(data);
+      // Handle both array response and paginated response
+      const variantsArray = Array.isArray(data) ? data : (data?.content || []);
+      setVariants(variantsArray);
+      setFilteredVariants(variantsArray);
     } catch (error) {
       toast.error('Failed to fetch item variants');
       console.error(error);
+      setVariants([]);
+      setFilteredVariants([]);
     } finally {
       setLoading(false);
     }
@@ -46,9 +50,12 @@ export const ItemVariantsPage = () => {
   const fetchItems = async () => {
     try {
       const data = await productService.getItems();
-      setItems(data);
+      // Handle both array response and paginated response
+      const itemsArray = Array.isArray(data) ? data : (data?.content || []);
+      setItems(itemsArray);
     } catch (error) {
       console.error('Failed to fetch items:', error);
+      setItems([]);
     }
   };
 
@@ -113,6 +120,7 @@ export const ItemVariantsPage = () => {
       toast.success('Item variant deleted successfully');
       fetchVariants();
       setIsDeleteDialogOpen(false);
+      setSelectedVariant(null);
     } catch (error) {
       toast.error('Failed to delete item variant');
       console.error(error);
@@ -123,6 +131,7 @@ export const ItemVariantsPage = () => {
     fetchVariants();
     setIsCreateModalOpen(false);
     setIsEditModalOpen(false);
+    setSelectedVariant(null);
   };
 
   return (
@@ -188,10 +197,10 @@ export const ItemVariantsPage = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    SKU
+                    Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Variant Name
+                    SKU
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Parent Item
@@ -211,27 +220,27 @@ export const ItemVariantsPage = () => {
                 {filteredVariants.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
-                      No item variants found
+                      No variants found
                     </td>
                   </tr>
                 ) : (
                   filteredVariants.map((variant) => (
                     <tr key={variant.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{variant.sku}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">
-                          {variant.name || '-'}
-                        </div>
+                        <div className="text-sm font-medium text-gray-900">{variant.name || '-'}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">{variant.parentItemName || '-'}</div>
+                        <div className="text-sm text-gray-900">{variant.sku}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {items.find((i) => i.id === variant.parentItemId)?.name || '-'}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-500">
-                          {variant.variantAttributes
-                            ? Object.entries(variant.variantAttributes)
+                        <div className="text-sm text-gray-900">
+                          {variant.attributes && Object.keys(variant.attributes).length > 0
+                            ? Object.entries(variant.attributes)
                                 .map(([key, value]) => `${key}: ${value}`)
                                 .join(', ')
                             : '-'}
@@ -285,14 +294,20 @@ export const ItemVariantsPage = () => {
       {/* Modals */}
       <ItemVariantFormModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setSelectedVariant(null);
+        }}
         onSuccess={handleFormSuccess}
         mode="create"
       />
 
       <ItemVariantFormModal
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedVariant(null);
+        }}
         onSuccess={handleFormSuccess}
         mode="edit"
         variant={selectedVariant}
@@ -300,7 +315,10 @@ export const ItemVariantsPage = () => {
 
       <ItemVariantDetailModal
         isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedVariant(null);
+        }}
         variant={selectedVariant}
         onEdit={() => {
           setIsDetailModalOpen(false);
@@ -310,7 +328,10 @@ export const ItemVariantsPage = () => {
 
       <DeleteConfirmDialog
         isOpen={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
+        onClose={() => {
+          setIsDeleteDialogOpen(false);
+          setSelectedVariant(null);
+        }}
         onConfirm={confirmDelete}
         title="Delete Item Variant"
         message={`Are you sure you want to delete this variant? This action cannot be undone.`}

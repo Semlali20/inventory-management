@@ -1,101 +1,414 @@
 // src/components/item-variants/ItemVariantFormModal.tsx
 import React, { useState, useEffect } from 'react';
+import { X, Plus, Trash2 } from 'lucide-react';
+import { productService } from '@/services/product.service';
+import { ItemVariant } from '@/types';
+import { toast } from 'react-hot-toast';
 
 interface ItemVariantFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
-  initialData?: any;
+  onSuccess: () => void;
+  mode: 'create' | 'edit';
+  variant?: ItemVariant | null;
+}
+
+interface AttributeItem {
+  key: string;
+  value: string;
 }
 
 export const ItemVariantFormModal: React.FC<ItemVariantFormModalProps> = ({
   isOpen,
   onClose,
-  onSubmit,
-  initialData
+  onSuccess,
+  mode,
+  variant
 }) => {
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<any[]>([]);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  
+  // Form data
   const [formData, setFormData] = useState({
-    item_id: '',
-    name: '',
+    parentItemId: '',
     sku: '',
-    barcode: '',
-    price: '',
-    ...initialData
   });
 
-  useEffect(() => {
-    if (initialData) {
-      setFormData({ ...initialData });
-    }
-  }, [initialData]);
+  // Variant attributes as array (easier to work with)
+  const [variantAttributes, setVariantAttributes] = useState<AttributeItem[]>([]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (isOpen) {
+      fetchItems();
+      
+      if (mode === 'edit' && variant) {
+        // EDIT MODE - Populate form with variant data
+        setFormData({
+          parentItemId: variant.parentItemId || '',
+          sku: variant.sku || '',
+        });
+
+        // Parse existing variant attributes
+        try {
+          if (variant.attributes) {
+            const parsed = typeof variant.attributes === 'string'
+              ? JSON.parse(variant.attributes)
+              : variant.attributes;
+            
+            const attrsArray = Object.entries(parsed).map(([key, value]) => ({
+              key,
+              value: String(value)
+            }));
+            setVariantAttributes(attrsArray);
+          } else {
+            setVariantAttributes([]);
+          }
+        } catch (error) {
+          console.error('Error parsing variant attributes:', error);
+          setVariantAttributes([]);
+        }
+      } else {
+        // CREATE MODE - Reset form
+        setFormData({
+          parentItemId: '',
+          sku: '',
+        });
+        setVariantAttributes([]);
+        setSelectedItem(null);
+      }
+    }
+  }, [isOpen, mode, variant]);
+
+  const fetchItems = async () => {
+    try {
+      const response = await productService.getItems();
+      const data = Array.isArray(response) ? response : response?.content || [];
+      setItems(data);
+      
+      // If editing, find and set the selected item
+      if (mode === 'edit' && variant?.parentItemId) {
+        const item = data.find((i: any) => i.id === variant.parentItemId);
+        setSelectedItem(item);
+      }
+    } catch (error) {
+      console.error('Failed to fetch items:', error);
+      setItems([]);
+    }
+  };
+
+  // Handle parent item selection
+  const handleParentItemChange = (itemId: string) => {
+    setFormData({ ...formData, parentItemId: itemId });
+    const item = items.find((i: any) => i.id === itemId);
+    setSelectedItem(item);
+    
+    // Auto-populate variant attributes from parent item if available
+    if (item && item.attributes && variantAttributes.length === 0) {
+      try {
+        const parsed = typeof item.attributes === 'string'
+          ? JSON.parse(item.attributes)
+          : item.attributes;
+        
+        const attrsArray = Object.entries(parsed).map(([key, value]) => ({
+          key,
+          value: String(value)
+        }));
+        setVariantAttributes(attrsArray);
+        toast.info('Parent item attributes loaded. Modify them to create variant.');
+      } catch (error) {
+        console.error('Error parsing parent attributes:', error);
+      }
+    }
+  };
+
+  // Add new variant attribute
+  const addVariantAttribute = () => {
+    setVariantAttributes([...variantAttributes, { key: '', value: '' }]);
+  };
+
+  // Remove variant attribute
+  const removeVariantAttribute = (index: number) => {
+    setVariantAttributes(variantAttributes.filter((_, i) => i !== index));
+  };
+
+  // Update variant attribute
+  const updateVariantAttribute = (index: number, field: 'key' | 'value', value: string) => {
+    const updated = [...variantAttributes];
+    updated[index] = { ...updated[index], [field]: value };
+    setVariantAttributes(updated);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
-    onClose();
+    setLoading(true);
+
+    try {
+      // Convert variant attributes array to JSON object
+      const variantAttrsObj: Record<string, string> = {};
+      variantAttributes.forEach(attr => {
+        if (attr.key && attr.value) {
+          variantAttrsObj[attr.key] = attr.value;
+        }
+      });
+      const variantAttributesJson = Object.keys(variantAttrsObj).length > 0
+        ? JSON.stringify(variantAttrsObj)
+        : null;
+
+      const requestData = {
+        parentItemId: formData.parentItemId,
+        sku: formData.sku,
+        variantAttributes: variantAttributesJson
+      };
+
+      if (mode === 'edit' && variant) {
+        await productService.updateItemVariant(variant.id, requestData);
+        toast.success('Item variant updated successfully');
+      } else {
+        await productService.createItemVariant(requestData);
+        toast.success('Item variant created successfully');
+      }
+      
+      onSuccess();
+      onClose();
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || error.message || 'Operation failed';
+      toast.error(errorMessage);
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h2 className="text-xl font-bold mb-4">
-          {initialData ? 'Edit Item Variant' : 'Create Item Variant'}
-        </h2>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Name</label>
-            <input
-              type="text"
-              className="w-full border rounded px-3 py-2"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center p-6 border-b">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {mode === 'edit' ? 'Edit Item Variant' : 'Create Item Variant'}
+          </h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X size={24} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Parent Item - REQUIRED */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Parent Item <span className="text-red-500">*</span>
+            </label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              value={formData.parentItemId}
+              onChange={(e) => handleParentItemChange(e.target.value)}
               required
-            />
+            >
+              <option value="">Select a parent item</option>
+              {items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.sku})
+                </option>
+              ))}
+            </select>
+            <p className="text-sm text-gray-500 mt-1">
+              Select the item this variant belongs to
+            </p>
           </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">SKU</label>
+
+          {/* Show parent item info if selected */}
+          {selectedItem && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Parent Item Info:</h4>
+              <div className="text-sm text-blue-800 space-y-1">
+                <p><span className="font-medium">Name:</span> {selectedItem.name}</p>
+                <p><span className="font-medium">SKU:</span> {selectedItem.sku}</p>
+                <p><span className="font-medium">Category:</span> {selectedItem.categoryName || 'N/A'}</p>
+                {selectedItem.attributes && (
+                  <div>
+                    <span className="font-medium">Attributes:</span>
+                    <pre className="text-xs mt-1 bg-blue-100 p-2 rounded overflow-x-auto">
+                      {typeof selectedItem.attributes === 'string' 
+                        ? selectedItem.attributes 
+                        : JSON.stringify(selectedItem.attributes, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SKU - REQUIRED */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Variant SKU <span className="text-red-500">*</span>
+            </label>
             <input
               type="text"
-              className="w-full border rounded px-3 py-2"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
               value={formData.sku}
               onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
               required
+              maxLength={50}
+              placeholder="e.g., ITEM-001-VAR-001"
+              disabled={mode === 'edit'}
             />
+            <p className="text-sm text-gray-500 mt-1">
+              Unique identifier for this variant {mode === 'edit' && '(cannot be changed after creation)'}
+            </p>
           </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Barcode</label>
-            <input
-              type="text"
-              className="w-full border rounded px-3 py-2"
-              value={formData.barcode}
-              onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-            />
+
+          {/* Variant Attributes Builder */}
+          <div>
+            <div className="flex justify-between items-center mb-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Variant Attributes
+              </label>
+              <button
+                type="button"
+                onClick={addVariantAttribute}
+                className="flex items-center gap-2 px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm"
+              >
+                <Plus size={16} />
+                Add Attribute
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {variantAttributes.length === 0 ? (
+                <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                  <p className="text-gray-500 text-sm mb-2">
+                    No variant attributes defined.
+                  </p>
+                  <p className="text-gray-400 text-xs">
+                    Variant attributes override or extend the parent item's attributes.<br />
+                    Example: size, color, weight, etc.
+                  </p>
+                </div>
+              ) : (
+                variantAttributes.map((attr, index) => (
+                  <div key={index} className="flex gap-3 items-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        value={attr.key}
+                        onChange={(e) => updateVariantAttribute(index, 'key', e.target.value)}
+                        placeholder="Attribute name (e.g., size)"
+                        required
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        value={attr.value}
+                        onChange={(e) => updateVariantAttribute(index, 'value', e.target.value)}
+                        placeholder="Value (e.g., Large)"
+                        required
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeVariantAttribute(index)}
+                      className="text-red-600 hover:bg-red-50 p-2 rounded"
+                      title="Remove attribute"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Preview */}
+            {variantAttributes.length > 0 && (
+              <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <p className="text-xs font-medium text-purple-800 mb-2">JSON Preview:</p>
+                <pre className="text-xs text-purple-700 overflow-x-auto">
+                  {JSON.stringify(
+                    variantAttributes.reduce((obj, attr) => {
+                      if (attr.key && attr.value) {
+                        obj[attr.key] = attr.value;
+                      }
+                      return obj;
+                    }, {} as Record<string, string>),
+                    null,
+                    2
+                  )}
+                </pre>
+              </div>
+            )}
+
+            {/* Help Text */}
+            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-xs text-yellow-800">
+                <span className="font-medium">💡 Tip:</span> Variant attributes define what makes this variant unique from the parent item.
+                Common examples: size (S/M/L), color (Red/Blue), storage (256GB/512GB), etc.
+              </p>
+            </div>
           </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Price</label>
-            <input
-              type="number"
-              step="0.01"
-              className="w-full border rounded px-3 py-2"
-              value={formData.price}
-              onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-            />
+
+          {/* Example Section */}
+          <div className="border-t pt-4">
+            <details className="cursor-pointer">
+              <summary className="text-sm font-medium text-gray-700 hover:text-gray-900">
+                📖 View Examples
+              </summary>
+              <div className="mt-3 space-y-3 text-xs">
+                <div className="p-3 bg-gray-50 rounded">
+                  <p className="font-medium text-gray-700 mb-1">Example 1: T-Shirt Variant</p>
+                  <pre className="text-gray-600 overflow-x-auto">
+{`{
+  "size": "Large",
+  "color": "Blue",
+  "fit": "Regular"
+}`}
+                  </pre>
+                </div>
+                <div className="p-3 bg-gray-50 rounded">
+                  <p className="font-medium text-gray-700 mb-1">Example 2: Laptop Variant</p>
+                  <pre className="text-gray-600 overflow-x-auto">
+{`{
+  "ram": "32GB",
+  "storage": "1TB SSD",
+  "color": "Space Gray",
+  "graphics": "NVIDIA RTX 3050"
+}`}
+                  </pre>
+                </div>
+                <div className="p-3 bg-gray-50 rounded">
+                  <p className="font-medium text-gray-700 mb-1">Example 3: Phone Variant</p>
+                  <pre className="text-gray-600 overflow-x-auto">
+{`{
+  "storage": "256GB",
+  "color": "Midnight Black",
+  "carrier": "Unlocked"
+}`}
+                  </pre>
+                </div>
+              </div>
+            </details>
           </div>
-          <div className="flex justify-end gap-2">
+
+          {/* Form Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border rounded hover:bg-gray-100"
+              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              disabled={loading}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading}
             >
-              {initialData ? 'Update' : 'Create'}
+              {loading ? 'Saving...' : (mode === 'edit' ? 'Update' : 'Create')}
             </button>
           </div>
         </form>
