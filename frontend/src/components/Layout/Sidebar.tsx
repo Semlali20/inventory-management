@@ -40,8 +40,7 @@ const navigation = [
   
   // Movements Section
   { name: 'Movements', href: '/movements', icon: Move },
-  { name: 'Movement Lines', href: '/movements/lines', icon: List },
-  { name: 'Movement Tasks', href: '/movements/tasks', icon: ClipboardCheck },
+
   
   // Quality
     { name: 'Quality Controls', href: '/quality/controls', icon: CheckCircle },
