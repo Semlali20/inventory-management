@@ -163,7 +163,9 @@ export enum MovementType {
   OUTBOUND = 'OUTBOUND',
   TRANSFER = 'TRANSFER',
   ADJUSTMENT = 'ADJUSTMENT',
-  RETURN = 'RETURN'
+  RETURN = 'RETURN',
+  RECEIPT = 'RECEIPT',
+  SHIPMENT = 'SHIPMENT'
 }
 
 export enum MovementStatus {
@@ -172,19 +174,23 @@ export enum MovementStatus {
   IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
-  ON_HOLD = 'ON_HOLD'
+  ON_HOLD = 'ON_HOLD',
+  PARTIALLY_COMPLETED = 'PARTIALLY_COMPLETED'
 }
 
 export enum MovementPriority {
   LOW = 'LOW',
   NORMAL = 'NORMAL',
-  HIGH = 'HIGH'
+  HIGH = 'HIGH',
+  URGENT = 'URGENT',
+  CRITICAL = 'CRITICAL'
 }
 
 export enum LineStatus {
   PENDING = 'PENDING',
   ALLOCATED = 'ALLOCATED',
   PICKED = 'PICKED',
+  PACKED = 'PACKED',
   IN_TRANSIT = 'IN_TRANSIT',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED'
@@ -193,13 +199,14 @@ export enum LineStatus {
 export enum TaskType {
   PICK = 'PICK',
   PACK = 'PACK',
-  PUT_AWAY = 'PUT_AWAY',  // ⚠️ Check this - must match backend exactly
+  SHIP = 'SHIP',
+  RECEIVE = 'RECEIVE',
   COUNT = 'COUNT',
+  PUTAWAY = 'PUTAWAY',
+  TRANSFER = 'TRANSFER',
   INSPECT = 'INSPECT',
   LOAD = 'LOAD',
-  UNLOAD = 'UNLOAD',
-  STAGE = 'STAGE',
-  REPLENISH = 'REPLENISH'
+  UNLOAD = 'UNLOAD'
 }
 
 export enum TaskStatus {
@@ -209,81 +216,164 @@ export enum TaskStatus {
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED'
 }
-
 export interface Movement {
   id: string;
+  referenceNumber?: string;
   type: MovementType;
-  movementDate: string;
   status: MovementStatus;
   priority: MovementPriority;
+  
+  // IDs
+  warehouseId: string;
+  sourceLocationId?: string;
+  destinationLocationId?: string;
+  
+  // Display Names (returned by backend or populated by frontend)
+  warehouseName?: string;
+  sourceLocationName?: string;
+  destinationLocationName?: string;
+  
+  // Dates
+  movementDate: string;
   expectedDate?: string;
   actualDate?: string;
   scheduledDate?: string;
-  sourceLocationId?: string;
-  destinationLocationId?: string;
-  sourceUserId?: string;
-  destinationUserId?: string;
-  warehouseId: string;
-  referenceNumber?: string;
-  notes?: string;
-  reason?: string;
-  createdBy: string;
   createdAt: string;
   updatedAt: string;
-  completedBy?: string;
   completedAt?: string;
+  
+  // Additional Info
+  notes?: string;
+  reason?: string;
+  
+  // User Info
+  createdBy: string;
+  completedBy?: string;
+  createdByName?: string;      // Display name
+  completedByName?: string;     // Display name
+  
+  // Related Data
   lines: MovementLine[];
   tasks?: MovementTask[];
+  
+  // Calculated Fields
   totalLines?: number;
   completedLines?: number;
   pendingTasks?: number;
+  totalQuantityRequested?: number;
+  totalQuantityActual?: number;
 }
-
 export interface MovementLine {
   id: string;
   movementId: string;
+  lineNumber: number;
+  
+  // Item IDs
   itemId: string;
-  item?: Item;
+  lotId?: string;
+  serialId?: string;
+  
+  // Display Names
+  itemName?: string;
+  itemSKU?: string;
+  itemDescription?: string;
+  lotNumber?: string;
+  serialNumber?: string;
+  
+  // Movement Reference
+  movementReferenceNumber?: string;
+  movementType?: MovementType;
+  
+  // Quantities
   requestedQuantity: number;
   actualQuantity?: number;
+  varianceQuantity?: number;
   uom?: string;
-  lotId?: string;
-  lot?: Lot;
-  serialId?: string;
-  serial?: Serial;
+  
+  // Location IDs
   fromLocationId?: string;
   toLocationId?: string;
+  
+  // Location Names
+  fromLocationName?: string;
+  toLocationName?: string;
+  
+  // Status
   status: LineStatus;
-  lineNumber: number;
+  
+  // Additional Info
   notes?: string;
   reason?: string;
+  
+  // Timestamps
   createdAt: string;
   updatedAt: string;
-  varianceQuantity?: number;
+  
+  // Related Objects (optional)
+  item?: Item;
+  lot?: Lot;
+  serial?: Serial;
 }
 
+// ============================================
+// MOVEMENT TASK - WITH DISPLAY NAMES
+// ============================================
 export interface MovementTask {
   id: string;
   movementId: string;
   movementLineId?: string;
-  assignedUserId?: string;
+  
+  // Task Info
   taskType: TaskType;
   status: TaskStatus;
   priority: number;
+  
+  // Movement Reference
+  movementReferenceNumber?: string;
+  movementType?: MovementType;
+  
+  // Assignment
+  assignedUserId?: string;
+  assignedToId?: string;        // Alternative field name
+  assignedToName?: string;       // Display name
+  assignedTo?: string;           // Alternative display name
+  
+  // Location
+  locationId?: string;
+  locationName?: string;         // Display name
+  
+  // Timeline
   scheduledStartTime?: string;
   actualStartTime?: string;
   expectedCompletionTime?: string;
   actualCompletionTime?: string;
-  locationId?: string;
+  actualEndTime?: string;        // Alternative field name
+  
+  // Additional Info
   instructions?: string;
+  description?: string;          // Alternative field name
   notes?: string;
+  
+  // Timestamps
   createdAt: string;
   updatedAt: string;
+  
+  // Calculated Fields
   durationMinutes?: number;
   isOverdue?: boolean;
+  
+  // Related Objects (optional)
+  movement?: {
+    id: string;
+    referenceNumber?: string;
+    movementNumber?: string;
+    type: MovementType;
+  };
 }
 
-// Request DTOs
+// ============================================
+// REQUEST DTOs
+// ============================================
 export interface MovementRequestDto {
   type: MovementType;
   movementDate?: string;
@@ -293,8 +383,6 @@ export interface MovementRequestDto {
   scheduledDate?: string;
   sourceLocationId?: string;
   destinationLocationId?: string;
-  sourceUserId?: string;
-  destinationUserId?: string;
   warehouseId: string;
   referenceNumber?: string;
   notes?: string;

@@ -1,4 +1,5 @@
-
+// src/services/movement.service.ts
+// ✅ COMPLETE VERSION - All Backend Endpoints Included
 
 import { apiClient } from './api';
 import { API_ENDPOINTS, STORAGE_KEYS } from '@/config/constants';
@@ -21,12 +22,8 @@ export const movementService = {
   },
 
   createMovement: async (data: Partial<Movement>): Promise<ApiResponse<Movement>> => {
-
     const user = storage.get<any>(STORAGE_KEYS.USER);
     const userId = user?.id || user?.userId;
-    
-    console.log('🚀 Creating movement with user ID:', userId);
-    console.log('📦 Movement data:', data);
     
     const headers: any = {};
     if (userId) {
@@ -42,7 +39,6 @@ export const movementService = {
   },
 
   updateMovement: async (id: string, data: Partial<Movement>): Promise<ApiResponse<Movement>> => {
-    // ✅ Also add user ID to update
     const user = storage.get<any>(STORAGE_KEYS.USER);
     const userId = user?.id || user?.userId;
     
@@ -60,7 +56,6 @@ export const movementService = {
   },
 
   deleteMovement: async (id: string): Promise<ApiResponse<void>> => {
-    // ✅ Add user ID to delete
     const user = storage.get<any>(STORAGE_KEYS.USER);
     const userId = user?.id || user?.userId;
     
@@ -130,33 +125,61 @@ export const movementService = {
     return response.data;
   },
 
-  // ========================================
-  // MOVEMENT LINES
-  // ========================================
-
-  getMovementLines: async (): Promise<MovementLine[]> => {
-    try {
-      const response = await apiClient.get<MovementLine[]>(API_ENDPOINTS.MOVEMENTS.MOVEMENT_LINES);
-      return response.data || [];
-    } catch (error) {
-      console.error('Error fetching movement lines:', error);
-      return [];
+  holdMovement: async (id: string, reason?: string): Promise<ApiResponse<Movement>> => {
+    const user = storage.get<any>(STORAGE_KEYS.USER);
+    const userId = user?.id || user?.userId;
+    
+    const headers: any = {};
+    if (userId) {
+      headers['X-User-Id'] = userId;
     }
+    
+    const response = await apiClient.post<ApiResponse<Movement>>(
+      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_BY_ID(id)}/hold`,
+      null,
+      { 
+        params: { reason },
+        headers 
+      }
+    );
+    return response.data;
   },
 
-  getMovementLinesByMovement: async (movementId: string): Promise<MovementLine[]> => {
+  releaseMovement: async (id: string): Promise<ApiResponse<Movement>> => {
+    const user = storage.get<any>(STORAGE_KEYS.USER);
+    const userId = user?.id || user?.userId;
+    
+    const headers: any = {};
+    if (userId) {
+      headers['X-User-Id'] = userId;
+    }
+    
+    const response = await apiClient.post<ApiResponse<Movement>>(
+      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_BY_ID(id)}/release`,
+      {},
+      { headers }
+    );
+    return response.data;
+  },
+
+  // ========================================
+  // MOVEMENT LINES - ⭐ SEPARATE ENDPOINTS
+  // ========================================
+
+  // ⭐ Get lines for a specific movement
+  getLinesByMovement: async (movementId: string): Promise<MovementLine[]> => {
     const response = await apiClient.get<MovementLine[]>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_LINES}/movement/${movementId}`
+      `/api/movement-lines/movement/${movementId}`
     );
     return response.data || [];
   },
 
   getMovementLineById: async (id: string): Promise<MovementLine> => {
-    const response = await apiClient.get<MovementLine>(API_ENDPOINTS.MOVEMENTS.MOVEMENT_LINE_BY_ID(id));
+    const response = await apiClient.get<MovementLine>(`/api/movement-lines/${id}`);
     return response.data;
   },
 
-  createMovementLine: async (movementId: string, data: Partial<MovementLine>): Promise<ApiResponse<MovementLine>> => {
+  addLineToMovement: async (movementId: string, data: Partial<MovementLine>): Promise<ApiResponse<MovementLine>> => {
     const user = storage.get<any>(STORAGE_KEYS.USER);
     const userId = user?.id || user?.userId;
     
@@ -166,7 +189,7 @@ export const movementService = {
     }
     
     const response = await apiClient.post<ApiResponse<MovementLine>>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_LINES}/movement/${movementId}`,
+      `/api/movement-lines/movement/${movementId}`,
       data,
       { headers }
     );
@@ -183,7 +206,7 @@ export const movementService = {
     }
     
     const response = await apiClient.put<ApiResponse<MovementLine>>(
-      API_ENDPOINTS.MOVEMENTS.MOVEMENT_LINE_BY_ID(id), 
+      `/api/movement-lines/${id}`, 
       data,
       { headers }
     );
@@ -200,7 +223,7 @@ export const movementService = {
     }
     
     const response = await apiClient.delete<ApiResponse<void>>(
-      API_ENDPOINTS.MOVEMENTS.MOVEMENT_LINE_BY_ID(id),
+      `/api/movement-lines/${id}`,
       { headers }
     );
     return response.data;
@@ -216,81 +239,31 @@ export const movementService = {
     }
     
     const response = await apiClient.post<ApiResponse<MovementLine>>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_LINE_BY_ID(id)}/complete`,
+      `/api/movement-lines/${id}/complete`,
       {},
       { headers }
     );
     return response.data;
   },
 
-  updateActualQuantity: async (id: string, actualQuantity: number): Promise<ApiResponse<MovementLine>> => {
-    const user = storage.get<any>(STORAGE_KEYS.USER);
-    const userId = user?.id || user?.userId;
-    
-    const headers: any = {};
-    if (userId) {
-      headers['X-User-Id'] = userId;
-    }
-    
-    const response = await apiClient.patch<ApiResponse<MovementLine>>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_LINE_BY_ID(id)}/actual-quantity`,
-      null,
-      { 
-        params: { actualQuantity },
-        headers 
-      }
-    );
-    return response.data;
-  },
-
   // ========================================
-  // MOVEMENT TASKS
+  // MOVEMENT TASKS - ⭐ SEPARATE ENDPOINTS
   // ========================================
 
-  getMovementTasks: async (): Promise<MovementTask[]> => {
-    try {
-      const response = await apiClient.get<MovementTask[]>(`${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASKS}/unassigned`);
-      return response.data || [];
-    } catch (error) {
-      console.error('Error fetching movement tasks:', error);
-      return [];
-    }
-  },
-
-  getMovementTasksByMovement: async (movementId: string): Promise<MovementTask[]> => {
+  // ⭐ Get tasks for a specific movement
+  getTasksByMovement: async (movementId: string): Promise<MovementTask[]> => {
     const response = await apiClient.get<MovementTask[]>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASKS}/movement/${movementId}`
-    );
-    return response.data || [];
-  },
-
-  getMovementTasksByStatus: async (status: string): Promise<MovementTask[]> => {
-    const response = await apiClient.get<MovementTask[]>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASKS}/status/${status}`
-    );
-    return response.data || [];
-  },
-
-  getMovementTasksByAssignedUser: async (userId: string): Promise<MovementTask[]> => {
-    const response = await apiClient.get<MovementTask[]>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASKS}/assigned-to/${userId}`
-    );
-    return response.data || [];
-  },
-
-  getUnassignedTasks: async (): Promise<MovementTask[]> => {
-    const response = await apiClient.get<MovementTask[]>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASKS}/unassigned`
+      `/api/movement-tasks/movement/${movementId}`
     );
     return response.data || [];
   },
 
   getMovementTaskById: async (id: string): Promise<MovementTask> => {
-    const response = await apiClient.get<MovementTask>(API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASK_BY_ID(id));
+    const response = await apiClient.get<MovementTask>(`/api/movement-tasks/${id}`);
     return response.data;
   },
 
-  createMovementTask: async (movementId: string, data: Partial<MovementTask>): Promise<ApiResponse<MovementTask>> => {
+  createTask: async (movementId: string, data: Partial<MovementTask>): Promise<ApiResponse<MovementTask>> => {
     const user = storage.get<any>(STORAGE_KEYS.USER);
     const userId = user?.id || user?.userId;
     
@@ -300,7 +273,7 @@ export const movementService = {
     }
     
     const response = await apiClient.post<ApiResponse<MovementTask>>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASKS}/movement/${movementId}`,
+      `/api/movement-tasks/movement/${movementId}`,
       data,
       { headers }
     );
@@ -317,7 +290,7 @@ export const movementService = {
     }
     
     const response = await apiClient.put<ApiResponse<MovementTask>>(
-      API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASK_BY_ID(id), 
+      `/api/movement-tasks/${id}`, 
       data,
       { headers }
     );
@@ -334,13 +307,13 @@ export const movementService = {
     }
     
     const response = await apiClient.delete<ApiResponse<void>>(
-      API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASK_BY_ID(id),
+      `/api/movement-tasks/${id}`,
       { headers }
     );
     return response.data;
   },
 
-  assignMovementTask: async (id: string, assignedUserId: string): Promise<ApiResponse<MovementTask>> => {
+  assignTask: async (taskId: string, assignToUserId: string): Promise<ApiResponse<MovementTask>> => {
     const user = storage.get<any>(STORAGE_KEYS.USER);
     const userId = user?.id || user?.userId;
     
@@ -350,17 +323,17 @@ export const movementService = {
     }
     
     const response = await apiClient.post<ApiResponse<MovementTask>>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASK_BY_ID(id)}/assign`,
+      `/api/movement-tasks/${taskId}/assign`,
       null,
       { 
-        params: { assignToUserId: assignedUserId },
+        params: { assignToUserId },
         headers 
       }
     );
     return response.data;
   },
 
-  startMovementTask: async (id: string): Promise<ApiResponse<MovementTask>> => {
+  startTask: async (taskId: string): Promise<ApiResponse<MovementTask>> => {
     const user = storage.get<any>(STORAGE_KEYS.USER);
     const userId = user?.id || user?.userId;
     
@@ -370,14 +343,14 @@ export const movementService = {
     }
     
     const response = await apiClient.post<ApiResponse<MovementTask>>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASK_BY_ID(id)}/start`,
+      `/api/movement-tasks/${taskId}/start`,
       {},
       { headers }
     );
     return response.data;
   },
 
-  completeMovementTask: async (id: string): Promise<ApiResponse<MovementTask>> => {
+  completeTask: async (taskId: string): Promise<ApiResponse<MovementTask>> => {
     const user = storage.get<any>(STORAGE_KEYS.USER);
     const userId = user?.id || user?.userId;
     
@@ -387,14 +360,14 @@ export const movementService = {
     }
     
     const response = await apiClient.post<ApiResponse<MovementTask>>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASK_BY_ID(id)}/complete`,
+      `/api/movement-tasks/${taskId}/complete`,
       {},
       { headers }
     );
     return response.data;
   },
 
-  cancelMovementTask: async (id: string, reason?: string): Promise<ApiResponse<MovementTask>> => {
+  cancelTask: async (taskId: string, reason?: string): Promise<ApiResponse<MovementTask>> => {
     const user = storage.get<any>(STORAGE_KEYS.USER);
     const userId = user?.id || user?.userId;
     
@@ -404,7 +377,7 @@ export const movementService = {
     }
     
     const response = await apiClient.post<ApiResponse<MovementTask>>(
-      `${API_ENDPOINTS.MOVEMENTS.MOVEMENT_TASK_BY_ID(id)}/cancel`,
+      `/api/movement-tasks/${taskId}/cancel`,
       null,
       { 
         params: { reason },

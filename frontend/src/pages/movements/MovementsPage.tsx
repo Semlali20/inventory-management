@@ -1,555 +1,471 @@
-// src/pages/movements/MovementsPage.tsx
-
-import { useState, useEffect } from 'react';
-import { Plus, Search, Edit, Trash2, Eye, Play, CheckCircle, XCircle, Pause, AlertCircle, Clock, Package } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, Filter, RefreshCw, ArrowUpDown, Package, TrendingUp, Clock, CheckCircle } from 'lucide-react';
 import { movementService } from '@/services/movement.service';
-import { Movement, MovementStatus } from '@/types';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
+import { Movement, MovementStatus, MovementType, MovementPriority } from '@/types';
+import MovementDetailModal from '@/components/movements/MovementDetailModal';
+//import CreateMovementModal from '@/components/movements/Createmovementmodal';
 import { MovementFormModal } from '@/components/movements/MovementFormModal';
-import { MovementDetailModal } from '@/components/movements/MovementDetailModal';
-import { DeleteConfirmDialog } from '@/components/ui/DeleteConfirmDialog';
+import MovementCard from '@/components/movements/Movementcard';
+import MovementFilters from '@/components/movements/Movementfilters';
 import { toast } from 'react-hot-toast';
-import { format } from 'date-fns';
-import { motion } from 'framer-motion';
 
-export const MovementsPage = () => {
+interface MovementStats {
+  total: number;
+  inProgress: number;
+  completed: number;
+  pending: number;
+}
+
+const MovementsPage: React.FC = () => {
   const [movements, setMovements] = useState<Movement[]>([]);
   const [filteredMovements, setFilteredMovements] = useState<Movement[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterWarehouse, setFilterWarehouse] = useState('');
-
-  // Modal states
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState<Movement | null>(null);
-
-  // Statistics
-  const [stats, setStats] = useState({
-    totalMovements: 0,
-    pendingMovements: 0,
-    inProgressMovements: 0,
-    completedMovements: 0,
-    cancelledMovements: 0,
-    onHoldMovements: 0,
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [stats, setStats] = useState<MovementStats>({
+    total: 0,
+    inProgress: 0,
+    completed: 0,
+    pending: 0
   });
+
+  // Filter states
+  const [filters, setFilters] = useState({
+    type: '' as MovementType | '',
+    status: '' as MovementStatus | '',
+    priority: '' as MovementPriority | '',
+    warehouseId: '',
+    startDate: '',
+    endDate: ''
+  });
+
+  const [sortBy, setSortBy] = useState<'createdAt' | 'movementDate' | 'status'>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     fetchMovements();
   }, []);
 
   useEffect(() => {
-    applyFilters();
-  }, [searchTerm, filterType, filterStatus, filterWarehouse, movements]);
+    applyFiltersAndSort();
+  }, [movements, searchTerm, filters, sortBy, sortOrder]);
 
-  // Fetch movements
   const fetchMovements = async () => {
-    setLoading(true);
     try {
+      setLoading(true);
       const response = await movementService.getMovements();
-      const movementsData = Array.isArray(response) ? response : response?.content || [];
+      const movementsData = response.content || [];
       setMovements(movementsData);
       calculateStats(movementsData);
-    } catch (error) {
-      toast.error('Failed to fetch movements');
-      console.error(error);
+    } catch (error: any) {
+      console.error('Error fetching movements:', error);
+      toast.error(error.message || 'Failed to fetch movements');
     } finally {
       setLoading(false);
     }
   };
 
-  // Calculate statistics
-  const calculateStats = (data: Movement[]) => {
-    setStats({
-      totalMovements: data.length,
-      pendingMovements: data.filter(m => m.status === MovementStatus.PENDING).length,
-      inProgressMovements: data.filter(m => m.status === MovementStatus.IN_PROGRESS).length,
-      completedMovements: data.filter(m => m.status === MovementStatus.COMPLETED).length,
-      cancelledMovements: data.filter(m => m.status === MovementStatus.CANCELLED).length,
-      onHoldMovements: data.filter(m => m.status === MovementStatus.ON_HOLD).length,
-    });
+  const calculateStats = (movementsData: Movement[]) => {
+    const stats = {
+      total: movementsData.length,
+      inProgress: movementsData.filter(m => m.status === MovementStatus.IN_PROGRESS).length,
+      completed: movementsData.filter(m => m.status === MovementStatus.COMPLETED).length,
+      pending: movementsData.filter(m => m.status === MovementStatus.PENDING).length
+    };
+    setStats(stats);
   };
 
-  // Apply filters
-  const applyFilters = () => {
+  const applyFiltersAndSort = () => {
     let filtered = [...movements];
 
+    // Search filter
     if (searchTerm) {
-      filtered = filtered.filter(
-        (m) =>
-          m.referenceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          m.notes?.toLowerCase().includes(searchTerm.toLowerCase())
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(movement =>
+        movement.referenceNumber?.toLowerCase().includes(search) ||
+        movement.notes?.toLowerCase().includes(search) ||
+        movement.id.toLowerCase().includes(search)
       );
     }
 
-    if (filterType) {
-      filtered = filtered.filter((m) => m.type === filterType);
+    // Type filter
+    if (filters.type) {
+      filtered = filtered.filter(m => m.type === filters.type);
     }
 
-    if (filterStatus) {
-      filtered = filtered.filter((m) => m.status === filterStatus);
+    // Status filter
+    if (filters.status) {
+      filtered = filtered.filter(m => m.status === filters.status);
     }
 
-    if (filterWarehouse) {
-      filtered = filtered.filter((m) => m.warehouseId === filterWarehouse);
+    // Priority filter
+    if (filters.priority) {
+      filtered = filtered.filter(m => m.priority === filters.priority);
     }
+
+    // Warehouse filter
+    if (filters.warehouseId) {
+      filtered = filtered.filter(m => m.warehouseId === filters.warehouseId);
+    }
+
+    // Date range filter
+    if (filters.startDate) {
+      filtered = filtered.filter(m => new Date(m.movementDate) >= new Date(filters.startDate));
+    }
+    if (filters.endDate) {
+      filtered = filtered.filter(m => new Date(m.movementDate) <= new Date(filters.endDate));
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      let aValue: any = a[sortBy];
+      let bValue: any = b[sortBy];
+
+      if (sortBy === 'createdAt' || sortBy === 'movementDate') {
+        aValue = new Date(aValue).getTime();
+        bValue = new Date(bValue).getTime();
+      }
+
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
 
     setFilteredMovements(filtered);
   };
 
-  // Handlers
-  const handleCreate = () => {
-    setIsCreateModalOpen(true);
-  };
-
-  const handleEdit = (movement: Movement) => {
-    setSelectedMovement(movement);
-    setIsEditModalOpen(true);
-  };
-
-  const handleView = (movement: Movement) => {
+  const handleMovementClick = (movement: Movement) => {
     setSelectedMovement(movement);
     setIsDetailModalOpen(true);
   };
 
-  const handleDelete = (movement: Movement) => {
-    setSelectedMovement(movement);
-    setIsDeleteDialogOpen(true);
+  const handleCreateMovement = () => {
+    setIsCreateModalOpen(true);
   };
 
-  const confirmDelete = async () => {
-    if (!selectedMovement) return;
+  const handleMovementCreated = () => {
+    setIsCreateModalOpen(false);
+    fetchMovements();
+  };
+
+  const handleMovementUpdated = () => {
+    fetchMovements();
+  };
+
+  const handleStatusChange = async (movementId: string, action: string, reason?: string) => {
+    try {
+      let response;
+      switch (action) {
+        case 'start':
+          response = await movementService.startMovement(movementId);
+          toast.success('Movement started successfully');
+          break;
+        case 'complete':
+          response = await movementService.completeMovement(movementId);
+          toast.success('Movement completed successfully');
+          break;
+        case 'cancel':
+          if (!reason) {
+            toast.error('Cancellation reason is required');
+            return;
+          }
+          response = await movementService.cancelMovement(movementId, reason);
+          toast.success('Movement cancelled successfully');
+          break;
+        case 'hold':
+          if (!reason) {
+            toast.error('Hold reason is required');
+            return;
+          }
+          response = await movementService.holdMovement(movementId, reason);
+          toast.success('Movement put on hold');
+          break;
+        case 'release':
+          response = await movementService.releaseMovement(movementId);
+          toast.success('Movement released from hold');
+          break;
+        default:
+          toast.error('Invalid action');
+          return;
+      }
+      
+      fetchMovements();
+      if (selectedMovement?.id === movementId) {
+        setSelectedMovement(response.data);
+      }
+    } catch (error: any) {
+      console.error(`Error performing ${action}:`, error);
+      toast.error(error.message || `Failed to ${action} movement`);
+    }
+  };
+
+  const handleDelete = async (movementId: string) => {
+    if (!window.confirm('Are you sure you want to delete this movement?')) {
+      return;
+    }
 
     try {
-      await movementService.deleteMovement(selectedMovement.id);
+      await movementService.deleteMovement(movementId);
       toast.success('Movement deleted successfully');
       fetchMovements();
-      setIsDeleteDialogOpen(false);
-      setSelectedMovement(null);
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to delete movement');
-      console.error(error);
-    }
-  };
-
-  const handleStart = async (movementId: string) => {
-    try {
-      await movementService.startMovement(movementId);
-      toast.success('Movement started successfully');
-      fetchMovements();
-      if (isDetailModalOpen) {
+      if (selectedMovement?.id === movementId) {
         setIsDetailModalOpen(false);
+        setSelectedMovement(null);
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to start movement');
-      console.error(error);
+      console.error('Error deleting movement:', error);
+      toast.error(error.message || 'Failed to delete movement');
     }
   };
 
-  const handleComplete = async (movementId: string) => {
-    try {
-      await movementService.completeMovement(movementId);
-      toast.success('Movement completed successfully');
-      fetchMovements();
-      if (isDetailModalOpen) {
-        setIsDetailModalOpen(false);
-      }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to complete movement');
-      console.error(error);
+  const clearFilters = () => {
+    setFilters({
+      type: '',
+      status: '',
+      priority: '',
+      warehouseId: '',
+      startDate: '',
+      endDate: ''
+    });
+    setSearchTerm('');
+  };
+
+  const toggleSort = (field: 'createdAt' | 'movementDate' | 'status') => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('desc');
     }
-  };
-
-  const handleCancel = async (movementId: string, reason: string) => {
-    try {
-      await movementService.cancelMovement(movementId, reason);
-      toast.success('Movement cancelled successfully');
-      fetchMovements();
-      if (isDetailModalOpen) {
-        setIsDetailModalOpen(false);
-      }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to cancel movement');
-      console.error(error);
-    }
-  };
-
-  const handleHold = async (movementId: string, reason: string) => {
-    try {
-      await movementService.holdMovement(movementId, reason);
-      toast.success('Movement put on hold');
-      fetchMovements();
-      if (isDetailModalOpen) {
-        setIsDetailModalOpen(false);
-      }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to hold movement');
-      console.error(error);
-    }
-  };
-
-  const handleRelease = async (movementId: string) => {
-    try {
-      await movementService.releaseMovement(movementId);
-      toast.success('Movement released from hold');
-      fetchMovements();
-      if (isDetailModalOpen) {
-        setIsDetailModalOpen(false);
-      }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to release movement');
-      console.error(error);
-    }
-  };
-
-  const handleFormSuccess = () => {
-    fetchMovements();
-    setIsCreateModalOpen(false);
-    setIsEditModalOpen(false);
-    setSelectedMovement(null);
-  };
-
-  // Status badge color
-  const getStatusColor = (status: MovementStatus) => {
-    const colors = {
-      [MovementStatus.DRAFT]: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
-      [MovementStatus.PENDING]: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-      [MovementStatus.IN_PROGRESS]: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-      [MovementStatus.COMPLETED]: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-      [MovementStatus.CANCELLED]: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
-      [MovementStatus.ON_HOLD]: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
-    };
-    return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-neutral-900">
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                Movements
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Manage stock movements and transfers across warehouses
+              <h1 className="text-3xl font-bold text-gray-900">Movement Management</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Manage and track all stock movements across your warehouses
               </p>
             </div>
-            <Button
-              onClick={handleCreate}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-xl shadow-lg"
+            <button
+              onClick={handleCreateMovement}
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
-              <Plus size={20} />
-              <span>Create Movement</span>
-            </Button>
+              <Plus className="w-5 h-5 mr-2" />
+              Create Movement
+            </button>
           </div>
-        </motion.div>
-
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-white dark:bg-neutral-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-neutral-700"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Total</p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">
-                  {stats.totalMovements}
-                </p>
-              </div>
-              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                <Package className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-white dark:bg-neutral-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-neutral-700"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">In Progress</p>
-                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400 mt-2">
-                  {stats.inProgressMovements}
-                </p>
-              </div>
-              <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                <Clock className="w-8 h-8 text-purple-600 dark:text-purple-400" />
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="bg-white dark:bg-neutral-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-neutral-700"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Completed</p>
-                <p className="text-3xl font-bold text-green-600 dark:text-green-400 mt-2">
-                  {stats.completedMovements}
-                </p>
-              </div>
-              <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="bg-white dark:bg-neutral-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-neutral-700"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">On Hold</p>
-                <p className="text-3xl font-bold text-orange-600 dark:text-orange-400 mt-2">
-                  {stats.onHoldMovements}
-                </p>
-              </div>
-              <div className="p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-                <Pause className="w-8 h-8 text-orange-600 dark:text-orange-400" />
-              </div>
-            </div>
-          </motion.div>
         </div>
+      </div>
 
-        {/* Filters */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="bg-white dark:bg-neutral-800 rounded-xl shadow-lg p-6 mb-8 border border-gray-200 dark:border-neutral-700"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <Input
-                type="text"
-                placeholder="Search movements..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+      {/* Stats Cards */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <Package className="h-6 w-6 text-gray-400" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Total Movements</dt>
+                    <dd className="text-2xl font-semibold text-gray-900">{stats.total}</dd>
+                  </dl>
+                </div>
+              </div>
             </div>
-
-            <Select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
-              <option value="">All Types</option>
-              <option value="INBOUND">Inbound</option>
-              <option value="OUTBOUND">Outbound</option>
-              <option value="TRANSFER">Transfer</option>
-              <option value="ADJUSTMENT">Adjustment</option>
-              <option value="RETURN">Return</option>
-            </Select>
-
-            <Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-              <option value="">All Statuses</option>
-              <option value="DRAFT">Draft</option>
-              <option value="PENDING">Pending</option>
-              <option value="IN_PROGRESS">In Progress</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="CANCELLED">Cancelled</option>
-              <option value="ON_HOLD">On Hold</option>
-            </Select>
-
-            <Select value={filterWarehouse} onChange={(e) => setFilterWarehouse(e.target.value)}>
-              <option value="">All Warehouses</option>
-            </Select>
           </div>
-        </motion.div>
 
-        {/* Table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="bg-white dark:bg-neutral-800 rounded-xl shadow-lg border border-gray-200 dark:border-neutral-700 overflow-hidden"
-        >
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <TrendingUp className="h-6 w-6 text-blue-400" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">In Progress</dt>
+                    <dd className="text-2xl font-semibold text-blue-600">{stats.inProgress}</dd>
+                  </dl>
+                </div>
+              </div>
             </div>
-          ) : filteredMovements.length === 0 ? (
-            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-              <Package className="mx-auto h-12 w-12 mb-4 opacity-50" />
-              <p className="text-lg font-medium">No movements found</p>
-              <p className="text-sm mt-2">Create your first movement to get started</p>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <Clock className="h-6 w-6 text-yellow-400" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Pending</dt>
+                    <dd className="text-2xl font-semibold text-yellow-600">{stats.pending}</dd>
+                  </dl>
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-neutral-700">
-                <thead className="bg-gray-50 dark:bg-neutral-900">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Reference
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Priority
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Lines
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white dark:bg-neutral-800 divide-y divide-gray-200 dark:divide-neutral-700">
-                  {filteredMovements.map((movement) => (
-                    <tr
-                      key={movement.id}
-                      className="hover:bg-gray-50 dark:hover:bg-neutral-700 transition-colors"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {movement.referenceNumber || 'N/A'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900 dark:text-gray-300">
-                          {movement.type}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(movement.status)}`}>
-                          {movement.status.replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900 dark:text-gray-300">
-                          {movement.priority}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900 dark:text-gray-300">
-                          {format(new Date(movement.movementDate), 'MMM dd, yyyy')}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900 dark:text-gray-300">
-                          {movement.lines?.length || 0}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleView(movement)}
-                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                            title="View"
-                          >
-                            <Eye size={18} />
-                          </button>
-                          {(movement.status === MovementStatus.DRAFT || movement.status === MovementStatus.PENDING) && (
-                            <button
-                              onClick={() => handleEdit(movement)}
-                              className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300"
-                              title="Edit"
-                            >
-                              <Edit size={18} />
-                            </button>
-                          )}
-                          {(movement.status === MovementStatus.PENDING || movement.status === MovementStatus.DRAFT) && (
-                            <button
-                              onClick={() => handleStart(movement.id)}
-                              className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                              title="Start"
-                            >
-                              <Play size={18} />
-                            </button>
-                          )}
-                          {movement.status === MovementStatus.IN_PROGRESS && (
-                            <button
-                              onClick={() => handleComplete(movement.id)}
-                              className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                              title="Complete"
-                            >
-                              <CheckCircle size={18} />
-                            </button>
-                          )}
-                          {(movement.status === MovementStatus.DRAFT || movement.status === MovementStatus.CANCELLED) && (
-                            <button
-                              onClick={() => handleDelete(movement)}
-                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                              title="Delete"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <CheckCircle className="h-6 w-6 text-green-400" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Completed</dt>
+                    <dd className="text-2xl font-semibold text-green-600">{stats.completed}</dd>
+                  </dl>
+                </div>
+              </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search and Filters */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Search */}
+            <div className="flex-1">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Search movements by reference, ID, or notes..."
+                />
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`inline-flex items-center px-4 py-2 border rounded-md shadow-sm text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                  showFilters
+                    ? 'border-blue-500 text-blue-700 bg-blue-50'
+                    : 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50'
+                }`}
+              >
+                <Filter className="w-5 h-5 mr-2" />
+                Filters
+              </button>
+
+              <button
+                onClick={fetchMovements}
+                disabled={loading}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-5 h-5 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+
+              <button
+                onClick={() => toggleSort('createdAt')}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <ArrowUpDown className="w-5 h-5 mr-2" />
+                Sort
+              </button>
+            </div>
+          </div>
+
+          {/* Filters Panel */}
+          {showFilters && (
+            <MovementFilters
+              filters={filters}
+              onFilterChange={setFilters}
+              onClearFilters={clearFilters}
+            />
           )}
-        </motion.div>
+        </div>
+      </div>
 
-        {/* Modals */}
+      {/* Movements List */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+        {loading ? (
+          <div className="flex justify-center items-center py-12">
+            <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
+          </div>
+        ) : filteredMovements.length === 0 ? (
+          <div className="bg-white rounded-lg shadow p-12 text-center">
+            <Package className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No movements found</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {searchTerm || filters.type || filters.status
+                ? 'Try adjusting your search or filters'
+                : 'Get started by creating a new movement'}
+            </p>
+            {!searchTerm && !filters.type && !filters.status && (
+              <div className="mt-6">
+                <button
+                  onClick={handleCreateMovement}
+                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <Plus className="w-5 h-5 mr-2" />
+                  Create Movement
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {filteredMovements.map((movement) => (
+              <MovementCard
+                key={movement.id}
+                movement={movement}
+                onClick={() => handleMovementClick(movement)}
+                onStatusChange={handleStatusChange}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      {isDetailModalOpen && selectedMovement && (
+        <MovementDetailModal
+          movement={selectedMovement}
+          isOpen={isDetailModalOpen}
+          onClose={() => {
+            setIsDetailModalOpen(false);
+            setSelectedMovement(null);
+          }}
+          onUpdate={handleMovementUpdated}
+          onStatusChange={handleStatusChange}
+          onDelete={handleDelete}
+        />
+      )}
+
+      {isCreateModalOpen && (
         <MovementFormModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
-          onSuccess={handleFormSuccess}
+          onSuccess={handleMovementCreated}
         />
-
-        <MovementFormModal
-          isOpen={isEditModalOpen}
-          onClose={() => setIsEditModalOpen(false)}
-          onSuccess={handleFormSuccess}
-          initialData={selectedMovement}
-        />
-
-        <MovementDetailModal
-          isOpen={isDetailModalOpen}
-          onClose={() => setIsDetailModalOpen(false)}
-          data={selectedMovement}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onStart={handleStart}
-          onComplete={handleComplete}
-          onCancel={handleCancel}
-          onHold={handleHold}
-          onRelease={handleRelease}
-        />
-
-        <DeleteConfirmDialog
-          isOpen={isDeleteDialogOpen}
-          onClose={() => setIsDeleteDialogOpen(false)}
-          onConfirm={confirmDelete}
-          title="Delete Movement"
-          message="Are you sure you want to delete this movement? This action cannot be undone."
-        />
-      </div>
+      )}
     </div>
   );
 };
+
+export default MovementsPage;

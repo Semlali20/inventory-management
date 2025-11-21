@@ -32,7 +32,7 @@ import { WarehousesPage } from '@/pages/locations/WarehousesPage';
 import { LocationsPage } from '@/pages/locations/LocationsPage';
 
 // Movements Pages
-import { MovementsPage } from '@/pages/movements/MovementsPage';
+import MovementsPage from '@/pages/movements/MovementsPage';
 import { MovementLinesPage } from '@/pages/movements/MovementLinesPage';
 import { MovementTasksPage } from '@/pages/movements/MovementTasksPage';
 
