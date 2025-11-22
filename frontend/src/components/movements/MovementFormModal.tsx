@@ -1,11 +1,12 @@
 // frontend/src/components/movements/MovementFormModal.tsx
-// ✅ FIXED VERSION - Corrected movementTypes and added actualQuantity support
+// ✅ COMPLETE VERSION WITH ALL FIXES - TOAST.INFO ERROR FIXED
 
 import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Package, ArrowRight, AlertCircle, CheckCircle, ClipboardList } from 'lucide-react';
 import { locationService } from '@/services/location.service';
 import { productService } from '@/services/product.service';
 import { movementService } from '@/services/movement.service';
+import { inventoryService } from '@/services/inventory.service';
 import {
   Movement,
   MovementRequestDto,
@@ -49,11 +50,11 @@ export const MovementFormModal = ({
     expectedDate: '',
   });
 
-  // ✅ FIXED: Lines now include actualQuantity
+  // Lines
   const [lines, setLines] = useState<Array<{
     itemId: string;
     requestedQuantity: number;
-    actualQuantity: number;  // ✅ ADDED
+    actualQuantity: number; // ✅ ADDED
     uom: string;
     fromLocationId: string;
     toLocationId: string;
@@ -69,20 +70,45 @@ export const MovementFormModal = ({
     scheduledStartTime: string;
   }>>([]);
 
-  // Helper function to get location display name
+  // ✅ NEW: Helper function to get item display name
+  const getItemDisplayName = (item: any): string => {
+    if (!item) return 'Unknown';
+    return `${item.sku || item.code || item.id.slice(0, 8)} - ${item.name || 'Unnamed Item'}`;
+  };
+
+  // ✅ NEW: Helper function to get location display name
   const getLocationDisplayName = (location: any): string => {
     if (!location) return 'Unknown';
-    const name = location.name || location.locationName || '';
-    return name ? `${name} (${location.code || location.id.slice(0, 8)})` : location.code || location.id.slice(0, 8);
+    const parts = [];
+    if (location.code) parts.push(location.code);
+    if (location.zone) parts.push(`Zone: ${location.zone}`);
+    if (location.aisle) parts.push(`Aisle: ${location.aisle}`);
+    return parts.length > 0 ? parts.join(' | ') : location.id?.slice(0, 8) || 'Unknown';
   };
 
   useEffect(() => {
     if (isOpen) {
-      loadData();
+      fetchData();
     }
   }, [isOpen]);
 
-  const loadData = async () => {
+  // ✅ FIXED: Auto-clear locations when warehouse changes - REMOVED toast.info()
+  useEffect(() => {
+    if (formData.warehouseId) {
+      setFormData(prev => ({
+        ...prev,
+        sourceLocationId: '',
+        destinationLocationId: ''
+      }));
+      // ✅ FIXED: Use toast() instead of toast.info()
+      toast('🔄 Locations cleared - please select new locations for this warehouse', {
+        icon: 'ℹ️',
+        duration: 3000,
+      });
+    }
+  }, [formData.warehouseId]);
+
+  const fetchData = async () => {
     setDataLoading(true);
     try {
       await Promise.all([
@@ -91,7 +117,8 @@ export const MovementFormModal = ({
         fetchItems()
       ]);
     } catch (error) {
-      console.error('❌ Error loading data:', error);
+      console.error('Error loading data:', error);
+      toast.error('Failed to load data');
     } finally {
       setDataLoading(false);
     }
@@ -103,7 +130,7 @@ export const MovementFormModal = ({
       const data = Array.isArray(response) ? response : response?.content || [];
       setWarehouses(data);
     } catch (error) {
-      console.error('❌ Error fetching warehouses:', error);
+      console.error('Error fetching warehouses:', error);
       toast.error('Failed to load warehouses');
     }
   };
@@ -114,7 +141,7 @@ export const MovementFormModal = ({
       const data = Array.isArray(response) ? response : response?.content || [];
       setLocations(data);
     } catch (error) {
-      console.error('❌ Error fetching locations:', error);
+      console.error('Error fetching locations:', error);
       toast.error('Failed to load locations');
     }
   };
@@ -125,7 +152,7 @@ export const MovementFormModal = ({
       const data = Array.isArray(response) ? response : response?.content || [];
       setItems(data);
     } catch (error) {
-      console.error('❌ Error fetching items:', error);
+      console.error('Error fetching items:', error);
       toast.error('Failed to load items');
     }
   };
@@ -146,7 +173,7 @@ export const MovementFormModal = ({
     setCurrentStep(1);
   };
 
-  // ✅ FIXED: addLine now includes actualQuantity
+  // ✅ MODIFIED: Auto-fill actualQuantity with requestedQuantity
   const addLine = () => {
     if (items.length === 0) {
       toast.error('❌ No items available');
@@ -156,19 +183,28 @@ export const MovementFormModal = ({
     const newLine = {
       itemId: items[0].id,
       requestedQuantity: 1,
-      actualQuantity: 0,  // ✅ ADDED: Initialize actualQuantity
+      actualQuantity: 1, // ✅ ADDED: Auto-default to requestedQuantity
       uom: 'EA',
       fromLocationId: formData.sourceLocationId || '',
       toLocationId: formData.destinationLocationId || '',
       notes: '',
     };
     setLines([...lines, newLine]);
-    console.log('➕ Line added:', newLine);
+    console.log('➕ Line added with actualQuantity:', newLine);
+    toast.success(`✅ Line added - Actual quantity set to ${newLine.requestedQuantity}`);
   };
 
+  // ✅ MODIFIED: Auto-sync actualQuantity when requestedQuantity changes
   const updateLine = (index: number, field: string, value: any) => {
     const updatedLines = [...lines];
     updatedLines[index] = { ...updatedLines[index], [field]: value };
+    
+    // ✅ ADDED: Auto-sync actualQuantity when requestedQuantity changes
+    if (field === 'requestedQuantity') {
+      updatedLines[index].actualQuantity = value;
+      console.log(`🔄 Auto-synced actualQuantity to ${value} for line ${index + 1}`);
+    }
+    
     setLines(updatedLines);
   };
 
@@ -181,7 +217,7 @@ export const MovementFormModal = ({
     const newTask = {
       taskType: TaskType.PICK,
       priority: 5,
-      locationId: formData.destinationLocationId || '',  
+      locationId: formData.destinationLocationId || '',
       instructions: '',
       scheduledStartTime: '',
     };
@@ -193,7 +229,6 @@ export const MovementFormModal = ({
     const updatedTasks = [...tasks];
     updatedTasks[index] = { ...updatedTasks[index], [field]: value };
     setTasks(updatedTasks);
-    console.log(`✏️ Task ${index + 1} updated:`, field, '=', value);
   };
 
   const removeTask = (index: number) => {
@@ -201,21 +236,7 @@ export const MovementFormModal = ({
     console.log(`🗑️ Task ${index + 1} removed`);
   };
 
-  const formatScheduledTime = (dateStr: string): string | undefined => {
-    if (!dateStr) return undefined;
-    try {
-      const date = new Date(dateStr);
-      return date.toISOString();
-    } catch {
-      return undefined;
-    }
-  };
-
-  // ✅ FIXED: buildSubmitData now includes actualQuantity
   const buildSubmitData = (): MovementRequestDto => {
-    console.log('📋 Building submit data...');
-    console.log('Current tasks:', tasks);
-    
     const submitData: MovementRequestDto = {
       type: formData.type,
       warehouseId: formData.warehouseId,
@@ -226,43 +247,27 @@ export const MovementFormModal = ({
       destinationLocationId: formData.destinationLocationId || undefined,
       referenceNumber: formData.referenceNumber || undefined,
       notes: formData.notes || undefined,
-      expectedDate: formData.expectedDate ? formatScheduledTime(formData.expectedDate) : undefined,
-      
-      // ✅ FIXED: lines now include actualQuantity
+      expectedDate: formData.expectedDate ? new Date(formData.expectedDate).toISOString() : undefined,
       lines: lines.map((line, index) => ({
         itemId: line.itemId,
         requestedQuantity: line.requestedQuantity,
-        actualQuantity: line.actualQuantity > 0 ? line.actualQuantity : undefined,  // ✅ ADDED
-        uom: line.uom || 'EA',
+        actualQuantity: line.actualQuantity, // ✅ INCLUDED
+        uom: line.uom,
         fromLocationId: line.fromLocationId || undefined,
         toLocationId: line.toLocationId || undefined,
         status: LineStatus.PENDING,
         lineNumber: index + 1,
         notes: line.notes || undefined,
       })),
-      
-      tasks: tasks.length > 0 ? tasks.map((task, index) => {
-        const formattedTask: any = {
-          taskType: task.taskType,
-          priority: task.priority || 5,
-        };
-        
-        if (task.locationId) {
-          formattedTask.locationId = task.locationId;
-        }
-        if (task.instructions) {
-          formattedTask.instructions = task.instructions;
-        }
-        if (task.scheduledStartTime) {
-          formattedTask.scheduledStartTime = formatScheduledTime(task.scheduledStartTime);
-        }
-        
-        console.log(`✅ Task ${index + 1} formatted:`, formattedTask);
-        return formattedTask;
-      }) : [],
+      tasks: tasks.map(task => ({
+        taskType: task.taskType,
+        priority: task.priority,
+        locationId: task.locationId || undefined,
+        instructions: task.instructions || undefined,
+        scheduledStartTime: task.scheduledStartTime ? new Date(task.scheduledStartTime).toISOString() : undefined,
+      })),
     };
 
-    console.log('📦 Final submit data:', JSON.stringify(submitData, null, 2));
     return submitData;
   };
 
@@ -275,41 +280,21 @@ export const MovementFormModal = ({
       toast.error('❌ Please select a warehouse');
       return false;
     }
-    if (formData.type === MovementType.TRANSFER) {
-      if (!formData.sourceLocationId) {
-        toast.error('❌ Transfer movements require a FROM location');
-        return false;
-      }
-      if (!formData.destinationLocationId) {
-        toast.error('❌ Transfer movements require a TO location');
-        return false;
-      }
-      if (formData.sourceLocationId === formData.destinationLocationId) {
-        toast.error('❌ FROM and TO locations must be different');
-        return false;
-      }
-    }
     return true;
   };
 
   const validateStep2 = (): boolean => {
     if (lines.length === 0) {
-      toast.error('❌ Please add at least one item');
+      toast.error('❌ Please add at least one line');
       return false;
     }
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (!line.itemId) {
+      if (!lines[i].itemId) {
         toast.error(`❌ Line ${i + 1}: Please select an item`);
         return false;
       }
-      if (!line.requestedQuantity || line.requestedQuantity <= 0) {
-        toast.error(`❌ Line ${i + 1}: Requested quantity must be greater than 0`);
-        return false;
-      }
-      // ✅ ADDED: Validate actualQuantity if provided
-      if (line.actualQuantity < 0) {
-        toast.error(`❌ Line ${i + 1}: Actual quantity cannot be negative`);
+      if (lines[i].requestedQuantity <= 0) {
+        toast.error(`❌ Line ${i + 1}: Quantity must be greater than 0`);
         return false;
       }
     }
@@ -318,10 +303,36 @@ export const MovementFormModal = ({
 
   const validateStep3 = (): boolean => {
     for (let i = 0; i < tasks.length; i++) {
-      const task = tasks[i];
-      if (!task.taskType) {
+      if (!tasks[i].taskType) {
         toast.error(`❌ Task ${i + 1}: Please select a task type`);
         return false;
+      }
+    }
+    return true;
+  };
+
+  // ✅ NEW: Stock availability validation
+  const validateInventoryAvailability = async () => {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.fromLocationId) continue; // Skip if no source location
+      
+      try {
+        const available = await inventoryService.checkStockAvailability(
+          line.itemId,
+          line.fromLocationId,
+          line.requestedQuantity
+        );
+        
+        if (!available) {
+          const item = items.find(it => it.id === line.itemId);
+          const itemName = getItemDisplayName(item);
+          toast.error(`❌ Insufficient stock for ${itemName}`);
+          return false;
+        }
+      } catch (error) {
+        console.warn('Could not check stock availability:', error);
+        // Continue anyway - backend will validate
       }
     }
     return true;
@@ -341,22 +352,27 @@ export const MovementFormModal = ({
     setCurrentStep(currentStep - 1);
   };
 
+  // ✅ MODIFIED: Added stock validation before submit
   const handleSubmit = async () => {
     console.log('🚀 === STARTING SUBMISSION ===');
-    console.log('Tasks count:', tasks.length);
-    console.log('Tasks data:', tasks);
     
     if (!validateStep1() || !validateStep2() || !validateStep3()) {
       console.log('❌ Validation failed');
       return;
     }
-
+  
+    // ✅ ADDED: Stock availability check
+    const hasStock = await validateInventoryAvailability();
+    if (!hasStock) {
+      toast.error('❌ Cannot create movement - insufficient stock');
+      return;
+    }
+  
     const submitData = buildSubmitData();
     
     console.log('📦 === FINAL SUBMIT DATA ===');
     console.log(JSON.stringify(submitData, null, 2));
-    console.log('============================');
-
+  
     setLoading(true);
     try {
       if (initialData) {
@@ -365,29 +381,64 @@ export const MovementFormModal = ({
       } else {
         const response = await movementService.createMovement(submitData);
         console.log('✅ Movement created:', response);
-        toast.success('✅ Movement created successfully!');
+        toast.success('✅ Movement created! Inventory will update when completed.');
       }
       
       onSuccess();
       onClose();
       resetForm();
     } catch (error: any) {
-      console.error('❌ === ERROR DETAILS ===');
-      console.error('Error:', error);
-      console.error('Response:', error.response?.data);
+      console.error('❌ === FULL ERROR OBJECT ===');
+      console.error(error);
+      
+      console.error('❌ === ERROR RESPONSE ===');
       console.error('Status:', error.response?.status);
-      console.error('======================');
+      console.error('Status Text:', error.response?.statusText);
+      console.error('Headers:', error.response?.headers);
+      console.error('Data:', error.response?.data);
       
-      const errorMsg = error.response?.data?.message 
-        || error.response?.data?.error
-        || error.message 
-        || 'Failed to save movement';
+      console.error('❌ === ERROR CONFIG ===');
+      console.error('URL:', error.config?.url);
+      console.error('Method:', error.config?.method);
+      console.error('Request Data:', error.config?.data);
       
-      toast.error(`❌ ${errorMsg}`);
+      // Extract the most detailed error message
+      let errorMsg = 'Failed to save movement';
+      
+      if (error.response?.data) {
+        // Try different common error response formats
+        if (typeof error.response.data === 'string') {
+          errorMsg = error.response.data;
+        } else if (error.response.data.message) {
+          errorMsg = error.response.data.message;
+        } else if (error.response.data.error) {
+          errorMsg = error.response.data.error;
+        } else if (error.response.data.detail) {
+          errorMsg = error.response.data.detail;
+        } else if (error.response.data.errors) {
+          // Handle validation errors array
+          errorMsg = Array.isArray(error.response.data.errors)
+            ? error.response.data.errors.join(', ')
+            : JSON.stringify(error.response.data.errors);
+        } else {
+          // Show the whole response object as a string
+          errorMsg = JSON.stringify(error.response.data);
+        }
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+      
+      console.error('❌ === FINAL ERROR MESSAGE ===');
+      console.error(errorMsg);
+      
+      toast.error(`❌ ${errorMsg}`, { duration: 5000 });
     } finally {
       setLoading(false);
     }
   };
+  
+  
+  
 
   if (!isOpen) return null;
 
@@ -395,7 +446,6 @@ export const MovementFormModal = ({
     loc => !formData.warehouseId || loc.warehouseId === formData.warehouseId
   );
 
-  // ✅ FIXED: movementTypes now matches types/index.ts exactly
   const movementTypes = [
     { value: MovementType.INBOUND, label: 'Inbound', icon: '📥' },
     { value: MovementType.OUTBOUND, label: 'Outbound', icon: '📤' },
@@ -405,6 +455,8 @@ export const MovementFormModal = ({
     { value: MovementType.RECEIPT, label: 'Receipt', icon: '📦' },
     { value: MovementType.SHIPMENT, label: 'Shipment', icon: '🚚' },
   ];
+
+
 
   const priorities = [
     { value: MovementPriority.LOW, label: 'Low' },
@@ -416,13 +468,9 @@ export const MovementFormModal = ({
 
   const taskTypes = [
     { value: TaskType.PICK, label: 'Pick', icon: '📦' },
-    { value: TaskType.PACK, label: 'Pack', icon: '📦' },
-    { value: TaskType.SHIP, label: 'Ship', icon: '🚚' },
-    { value: TaskType.RECEIVE, label: 'Receive', icon: '📥' },
-    { value: TaskType.COUNT, label: 'Count', icon: '🔢' },
     { value: TaskType.PUTAWAY, label: 'Put Away', icon: '📥' },
-    { value: TaskType.TRANSFER, label: 'Transfer', icon: '🔄' },
-    { value: TaskType.INSPECT, label: 'Inspect', icon: '🔍' },
+    { value: TaskType.COUNT, label: 'Count', icon: '🔢' },
+    { value: TaskType.PACK, label: 'Pack', icon: '📦' },
     { value: TaskType.LOAD, label: 'Load', icon: '🚚' },
     { value: TaskType.UNLOAD, label: 'Unload', icon: '📥' },
   ];
@@ -431,7 +479,7 @@ export const MovementFormModal = ({
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-neutral-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
         
-        {/* ==================== HEADER ==================== */}
+        {/* HEADER */}
         <div className="relative px-6 py-5 border-b border-gray-200 dark:border-neutral-700 bg-gradient-to-r from-blue-500 to-indigo-600">
           <button
             onClick={onClose}
@@ -483,7 +531,7 @@ export const MovementFormModal = ({
           </div>
         </div>
 
-        {/* ==================== BODY ==================== */}
+        {/* BODY */}
         {dataLoading ? (
           <div className="flex-1 flex items-center justify-center p-12">
             <div className="text-center">
@@ -495,7 +543,7 @@ export const MovementFormModal = ({
           <>
             <div className="flex-1 overflow-y-auto p-6">
               
-              {/* ========== STEP 1: Basic Info ========== */}
+              {/* STEP 1: Basic Info */}
               {currentStep === 1 && (
                 <div className="space-y-6">
                   <div className="text-center mb-6">
@@ -517,8 +565,8 @@ export const MovementFormModal = ({
                           onClick={() => setFormData({ ...formData, type: type.value })}
                           className={`p-4 rounded-xl border-2 transition-all text-left ${
                             formData.type === type.value
-                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
-                              : 'border-gray-200 dark:border-neutral-700 hover:border-blue-300'
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700'
                           }`}
                         >
                           <div className="text-2xl mb-2">{type.icon}</div>
@@ -534,44 +582,49 @@ export const MovementFormModal = ({
                       Warehouse <span className="text-red-500">*</span>
                     </label>
                     <select
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
                       value={formData.warehouseId}
                       onChange={(e) => setFormData({ ...formData, warehouseId: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="">Select Warehouse</option>
-                      {warehouses.map((warehouse) => (
-                        <option key={warehouse.id} value={warehouse.id}>
-                          {warehouse.code} - {warehouse.name}
+                      <option value="">Select warehouse...</option>
+                      {warehouses.map(wh => (
+                        <option key={wh.id} value={wh.id}>
+                          {wh.name} ({wh.code})
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Locations */}
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* FROM Location */}
+                  {/* Priority */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                      Priority
+                    </label>
+                    <select
+                      value={formData.priority}
+                      onChange={(e) => setFormData({ ...formData, priority: e.target.value as MovementPriority })}
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                    >
+                      {priorities.map(p => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Source & Destination Locations */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                        From Location {formData.type === MovementType.TRANSFER && <span className="text-red-500">*</span>}
+                        Source Location
                       </label>
                       <select
-                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white disabled:opacity-50"
                         value={formData.sourceLocationId}
-                        onChange={(e) => {
-                          const newLocationId = e.target.value;
-                          setFormData({ ...formData, sourceLocationId: newLocationId });
-                          
-                          // Update all lines fromLocationId
-                          const updatedLines = lines.map(line => ({
-                            ...line,
-                            fromLocationId: newLocationId
-                          }));
-                          setLines(updatedLines);
-                        }}
+                        onChange={(e) => setFormData({ ...formData, sourceLocationId: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                         disabled={!formData.warehouseId}
                       >
-                        <option value="">Select FROM location</option>
-                        {filteredLocations.map((loc) => (
+                        <option value="">Select source...</option>
+                        {filteredLocations.map(loc => (
                           <option key={loc.id} value={loc.id}>
                             {getLocationDisplayName(loc)}
                           </option>
@@ -579,29 +632,18 @@ export const MovementFormModal = ({
                       </select>
                     </div>
 
-                    {/* TO Location */}
                     <div>
                       <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                        To Location {formData.type === MovementType.TRANSFER && <span className="text-red-500">*</span>}
+                        Destination Location
                       </label>
                       <select
-                        className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white disabled:opacity-50"
                         value={formData.destinationLocationId}
-                        onChange={(e) => {
-                          const newLocationId = e.target.value;
-                          setFormData({ ...formData, destinationLocationId: newLocationId });
-                          
-                          // Update all lines toLocationId
-                          const updatedLines = lines.map(line => ({
-                            ...line,
-                            toLocationId: newLocationId
-                          }));
-                          setLines(updatedLines);
-                        }}
+                        onChange={(e) => setFormData({ ...formData, destinationLocationId: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                         disabled={!formData.warehouseId}
                       >
-                        <option value="">Select TO location</option>
-                        {filteredLocations.map((loc) => (
+                        <option value="">Select destination...</option>
+                        {filteredLocations.map(loc => (
                           <option key={loc.id} value={loc.id}>
                             {getLocationDisplayName(loc)}
                           </option>
@@ -610,269 +652,331 @@ export const MovementFormModal = ({
                     </div>
                   </div>
 
-                  {/* Priority & Reference */}
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* Reference & Expected Date */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                        Priority
-                      </label>
-                      <select
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                        value={formData.priority}
-                        onChange={(e) => setFormData({ ...formData, priority: e.target.value as MovementPriority })}
-                      >
-                        {priorities.map((priority) => (
-                          <option key={priority.value} value={priority.value}>
-                            {priority.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
                         Reference Number
                       </label>
                       <input
                         type="text"
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                        placeholder="Optional reference"
                         value={formData.referenceNumber}
                         onChange={(e) => setFormData({ ...formData, referenceNumber: e.target.value })}
+                        placeholder="MOV-001"
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
                         Expected Date
                       </label>
                       <input
                         type="datetime-local"
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
                         value={formData.expectedDate}
                         onChange={(e) => setFormData({ ...formData, expectedDate: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                        Notes
-                      </label>
-                      <textarea
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white resize-none"
-                        rows={2}
-                        placeholder="Any additional notes..."
-                        value={formData.notes}
-                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      />
-                    </div>
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                      Notes
+                    </label>
+                    <textarea
+                      value={formData.notes}
+                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                      rows={3}
+                      placeholder="Any additional notes..."
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
               )}
 
-              {/* ========== STEP 2: Items ========== */}
+              {/* STEP 2: Lines */}
               {currentStep === 2 && (
                 <div className="space-y-6">
-                  <div className="text-center mb-6">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                      📦 Step 2: Add Items
-                    </h3>
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                        📦 Step 2: Movement Lines
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Add items to this movement
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addLine}
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Line
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={addLine}
-                    disabled={items.length === 0}
-                    className="w-full px-6 py-3 rounded-xl border-2 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 font-medium disabled:opacity-50"
-                  >
-                    <Plus size={20} />
-                    Add Item Line
-                  </button>
-
                   {lines.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
-                      <Package className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                      <p className="font-medium">No items added yet</p>
-                      <p className="text-sm mt-2">Click "Add Item Line" to get started</p>
+                    <div className="text-center py-12 bg-gray-50 dark:bg-gray-900/50 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700">
+                      <Package className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-600 dark:text-gray-400">No lines added yet</p>
+                      <button
+                        onClick={addLine}
+                        className="mt-4 text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium"
+                      >
+                        Click "Add Line" to get started
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {lines.map((line, index) => (
-                        <div key={index} className="p-4 rounded-xl border-2 border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
-                          <div className="flex items-start justify-between mb-3">
-                            <span className="font-semibold text-gray-900 dark:text-white">Line {index + 1}</span>
-                            <button 
-                              onClick={() => removeLine(index)} 
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="col-span-2">
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                                Item <span className="text-red-500">*</span>
-                              </label>
-                              <select
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                                value={line.itemId}
-                                onChange={(e) => updateLine(index, 'itemId', e.target.value)}
+                      {lines.map((line, index) => {
+                        const item = items.find(it => it.id === line.itemId);
+                        const itemName = getItemDisplayName(item);
+                        const fromLoc = locations.find(loc => loc.id === line.fromLocationId);
+                        const toLoc = locations.find(loc => loc.id === line.toLocationId);
+                        const fromLocName = getLocationDisplayName(fromLoc);
+                        const toLocName = getLocationDisplayName(toLoc);
+                        
+                        return (
+                          <div key={index} className="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center space-x-2">
+                                <div className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm">
+                                  {index + 1}
+                                </div>
+                                <div>
+                                  <p className="font-medium text-gray-900 dark:text-white">{itemName}</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">Item ID: {line.itemId.slice(0, 8)}...</p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeLine(index)}
+                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                               >
-                                <option value="">Select Item</option>
-                                {items.map((item) => (
-                                  <option key={item.id} value={item.id}>
-                                    {item.code} - {item.name}
-                                  </option>
-                                ))}
-                              </select>
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
 
-                            <div>
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                                Requested Qty <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="number"
-                                min="0.01"
-                                step="0.01"
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                                value={line.requestedQuantity}
-                                onChange={(e) => updateLine(index, 'requestedQuantity', parseFloat(e.target.value) || 0)}
-                              />
-                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {/* Item Selection */}
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                  Item <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                  value={line.itemId}
+                                  onChange={(e) => updateLine(index, 'itemId', e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                >
+                                  {items.map(item => (
+                                    <option key={item.id} value={item.id}>
+                                      {getItemDisplayName(item)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
 
-                            {/* ✅ ADDED: Actual Quantity field */}
-                            <div>
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                                Actual Qty
-                              </label>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                                value={line.actualQuantity}
-                                onChange={(e) => updateLine(index, 'actualQuantity', parseFloat(e.target.value) || 0)}
-                                placeholder="0"
-                              />
-                            </div>
+                              {/* Requested Quantity (auto-syncs with actualQuantity) */}
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                  Quantity <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  value={line.requestedQuantity}
+                                  onChange={(e) => updateLine(index, 'requestedQuantity', Number(e.target.value))}
+                                  min="0"
+                                  step="0.01"
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                />
+                                <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                  ✅ Actual qty will be set to {line.requestedQuantity} {line.uom}
+                                </p>
+                              </div>
 
-                            <div>
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                                Unit
-                              </label>
-                              <input
-                                type="text"
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                                placeholder="EA, KG, PCS"
-                                value={line.uom}
-                                onChange={(e) => updateLine(index, 'uom', e.target.value)}
-                              />
-                            </div>
+                              {/* From Location with Display Name */}
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                  From Location
+                                </label>
+                                <select
+                                  value={line.fromLocationId}
+                                  onChange={(e) => updateLine(index, 'fromLocationId', e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="">Select source location...</option>
+                                  {filteredLocations.map(loc => (
+                                    <option key={loc.id} value={loc.id}>
+                                      {getLocationDisplayName(loc)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {line.fromLocationId && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Selected: {fromLocName}
+                                  </p>
+                                )}
+                              </div>
 
-                            <div className="col-span-2">
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                                Notes
-                              </label>
-                              <input
-                                type="text"
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                                placeholder="Optional notes"
-                                value={line.notes}
-                                onChange={(e) => updateLine(index, 'notes', e.target.value)}
-                              />
+                              {/* To Location with Display Name */}
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                  To Location
+                                </label>
+                                <select
+                                  value={line.toLocationId}
+                                  onChange={(e) => updateLine(index, 'toLocationId', e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="">Select destination location...</option>
+                                  {filteredLocations.map(loc => (
+                                    <option key={loc.id} value={loc.id}>
+                                      {getLocationDisplayName(loc)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {line.toLocationId && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Selected: {toLocName}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* UOM */}
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                  Unit of Measure
+                                </label>
+                                <input
+                                  type="text"
+                                  value={line.uom}
+                                  onChange={(e) => updateLine(index, 'uom', e.target.value)}
+                                  placeholder="EA, KG, L, etc."
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+
+                              {/* Notes */}
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                  Line Notes
+                                </label>
+                                <textarea
+                                  value={line.notes}
+                                  onChange={(e) => updateLine(index, 'notes', e.target.value)}
+                                  rows={2}
+                                  placeholder="Any notes for this line..."
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* ========== STEP 3: Tasks ========== */}
+              {/* STEP 3: Tasks */}
               {currentStep === 3 && (
                 <div className="space-y-6">
-                  <div className="text-center mb-6">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                      ✅ Step 3: Add Tasks (Optional)
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Tasks help organize work for this movement</p>
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                        📋 Step 3: Tasks (Optional)
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Add tasks for this movement
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addTask}
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Task
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={addTask}
-                    className="w-full px-6 py-3 rounded-xl border-2 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 font-medium"
-                  >
-                    <Plus size={20} />
-                    Add Task
-                  </button>
-
                   {tasks.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
-                      <ClipboardList className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                      <p className="font-medium">No tasks added</p>
-                      <p className="text-sm mt-2">Tasks are optional. Click "Add Task" to create one.</p>
+                    <div className="text-center py-12 bg-gray-50 dark:bg-gray-900/50 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-700">
+                      <ClipboardList className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-600 dark:text-gray-400">No tasks added</p>
+                      <button
+                        onClick={addTask}
+                        className="mt-4 text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium"
+                      >
+                        Add a task (optional)
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {tasks.map((task, index) => (
-                        <div key={index} className="p-4 rounded-xl border-2 border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
+                        <div key={index} className="bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
                           <div className="flex items-start justify-between mb-3">
-                            <span className="font-semibold text-gray-900 dark:text-white">Task {index + 1}</span>
-                            <button 
-                              onClick={() => removeTask(index)} 
-                              className="text-red-600 hover:text-red-700"
+                            <div className="flex items-center space-x-2">
+                              <div className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm">
+                                {index + 1}
+                              </div>
+                              <p className="font-medium text-gray-900 dark:text-white">Task {index + 1}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeTask(index)}
+                              className="text-red-600 hover:text-red-800 dark:text-red-400 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                             >
-                              <Trash2 size={18} />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Task Type <span className="text-red-500">*</span>
                               </label>
                               <select
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
                                 value={task.taskType}
-                                onChange={(e) => updateTask(index, 'taskType', e.target.value)}
+                                onChange={(e) => updateTask(index, 'taskType', e.target.value as TaskType)}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                               >
-                                {taskTypes.map((type) => (
-                                  <option key={type.value} value={type.value}>
-                                    {type.icon} {type.label}
+                                {taskTypes.map(tt => (
+                                  <option key={tt.value} value={tt.value}>
+                                    {tt.icon} {tt.label}
                                   </option>
                                 ))}
                               </select>
                             </div>
 
                             <div>
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                                Priority
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Priority (1-10)
                               </label>
                               <input
                                 type="number"
+                                value={task.priority}
+                                onChange={(e) => updateTask(index, 'priority', Number(e.target.value))}
                                 min="1"
                                 max="10"
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                                value={task.priority}
-                                onChange={(e) => updateTask(index, 'priority', parseInt(e.target.value) || 5)}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                               />
                             </div>
 
-                            <div className="col-span-2">
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Location
                               </label>
                               <select
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
                                 value={task.locationId}
                                 onChange={(e) => updateTask(index, 'locationId', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                               >
-                                <option value="">Select Location</option>
-                                {filteredLocations.map((loc) => (
+                                <option value="">Select location...</option>
+                                {filteredLocations.map(loc => (
                                   <option key={loc.id} value={loc.id}>
                                     {getLocationDisplayName(loc)}
                                   </option>
@@ -880,16 +984,28 @@ export const MovementFormModal = ({
                               </select>
                             </div>
 
-                            <div className="col-span-2">
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Scheduled Start
+                              </label>
+                              <input
+                                type="datetime-local"
+                                value={task.scheduledStartTime}
+                                onChange={(e) => updateTask(index, 'scheduledStartTime', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                 Instructions
                               </label>
                               <textarea
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white resize-none"
-                                rows={2}
-                                placeholder="Task instructions..."
                                 value={task.instructions}
                                 onChange={(e) => updateTask(index, 'instructions', e.target.value)}
+                                rows={2}
+                                placeholder="Task instructions..."
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                               />
                             </div>
                           </div>
@@ -900,81 +1016,135 @@ export const MovementFormModal = ({
                 </div>
               )}
 
-              {/* ========== STEP 4: Review ========== */}
+              {/* STEP 4: Review */}
               {currentStep === 4 && (
                 <div className="space-y-6">
                   <div className="text-center mb-6">
                     <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                      🔍 Step 4: Review & Submit
+                      ✅ Step 4: Review & Submit
                     </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Review your movement details before submitting
+                    </p>
                   </div>
 
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl">
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-4">Movement Summary</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Type:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{formData.type}</span>
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                      <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Basic Info</h4>
+                      <div className="space-y-1 text-sm">
+                        <p><span className="text-gray-600 dark:text-gray-400">Type:</span> <span className="font-medium text-gray-900 dark:text-white">{formData.type}</span></p>
+                        <p><span className="text-gray-600 dark:text-gray-400">Priority:</span> <span className="font-medium text-gray-900 dark:text-white">{formData.priority}</span></p>
+                        <p><span className="text-gray-600 dark:text-gray-400">Warehouse:</span> <span className="font-medium text-gray-900 dark:text-white">{warehouses.find(w => w.id === formData.warehouseId)?.name || 'N/A'}</span></p>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Priority:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{formData.priority}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Items:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{lines.length} line(s)</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Tasks:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{tasks.length} task(s)</span>
+                    </div>
+
+                    <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                      <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Summary</h4>
+                      <div className="space-y-1 text-sm">
+                        <p><span className="text-gray-600 dark:text-gray-400">Lines:</span> <span className="font-medium text-gray-900 dark:text-white">{lines.length}</span></p>
+                        <p><span className="text-gray-600 dark:text-gray-400">Tasks:</span> <span className="font-medium text-gray-900 dark:text-white">{tasks.length}</span></p>
+                        <p><span className="text-gray-600 dark:text-gray-400">Total Qty:</span> <span className="font-medium text-gray-900 dark:text-white">{lines.reduce((sum, l) => sum + l.requestedQuantity, 0)}</span></p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm text-yellow-800 dark:text-yellow-200">
-                      <p className="font-medium mb-1">Ready to submit?</p>
-                      <p>This movement will be created as a DRAFT and can be edited later.</p>
+                  {/* Lines Preview */}
+                  <div>
+                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Lines ({lines.length})</h4>
+                    <div className="space-y-2">
+                      {lines.map((line, index) => {
+                        const item = items.find(it => it.id === line.itemId);
+                        const itemName = getItemDisplayName(item);
+                        return (
+                          <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+                            <div className="flex items-center space-x-3">
+                              <span className="w-6 h-6 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full flex items-center justify-center text-xs font-semibold">
+                                {index + 1}
+                              </span>
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-white">{itemName}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  Qty: {line.requestedQuantity} {line.uom} (actual: {line.actualQuantity} {line.uom})
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
+
+                  {/* Tasks Preview */}
+                  {tasks.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Tasks ({tasks.length})</h4>
+                      <div className="space-y-2">
+                        {tasks.map((task, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+                            <div className="flex items-center space-x-3">
+                              <span className="w-6 h-6 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-full flex items-center justify-center text-xs font-semibold">
+                                {index + 1}
+                              </span>
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-white">{task.taskType}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Priority: {task.priority}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* ==================== FOOTER ==================== */}
-            <div className="border-t border-gray-200 dark:border-neutral-700 px-6 py-4 flex items-center justify-between bg-gray-50 dark:bg-neutral-900">
-              <button
-                onClick={currentStep === 1 ? onClose : handleBack}
-                className="px-6 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded-lg transition-colors font-medium"
-                disabled={loading}
-              >
-                {currentStep === 1 ? 'Cancel' : 'Back'}
-              </button>
+            {/* FOOTER */}
+            <div className="px-6 py-4 bg-gray-50 dark:bg-neutral-900 border-t border-gray-200 dark:border-neutral-700 flex items-center justify-between">
+              <div>
+                {currentStep > 1 && (
+                  <button
+                    onClick={handleBack}
+                    className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                    disabled={loading}
+                  >
+                    ← Back
+                  </button>
+                )}
+              </div>
 
-              <div className="flex gap-2">
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+
                 {currentStep < 4 ? (
                   <button
                     onClick={handleNext}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2"
-                    disabled={loading}
+                    className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
-                    Next <ArrowRight size={18} />
+                    Next
+                    <ArrowRight className="w-4 h-4 ml-2" />
                   </button>
                 ) : (
                   <button
                     onClick={handleSubmit}
-                    className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2"
                     disabled={loading}
+                    className="flex items-center px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                   >
                     {loading ? (
                       <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                         Submitting...
                       </>
                     ) : (
                       <>
-                        <CheckCircle size={18} />
+                        <CheckCircle className="w-4 h-4 mr-2" />
                         Submit Movement
                       </>
                     )}
