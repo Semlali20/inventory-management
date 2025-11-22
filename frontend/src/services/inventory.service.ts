@@ -109,7 +109,7 @@ export const inventoryService = {
   },
 
   // Get inventories by location
-  getInventoriesByLocation: async (locationId: string): Promise<any> => {
+  getInventoriesByLocation: async (locationId: string, targetLocationId: string): Promise<any> => {
     const response = await apiClient.get(`${API_ENDPOINTS.INVENTORY.INVENTORY}/location/${locationId}`);
     return response.data;
   },

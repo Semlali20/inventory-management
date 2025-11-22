@@ -62,7 +62,9 @@ const MovementCard: React.FC<MovementCardProps> = ({
       [MovementType.OUTBOUND]: 'text-red-600 bg-red-50 dark:bg-red-900 dark:text-red-200',
       [MovementType.TRANSFER]: 'text-blue-600 bg-blue-50 dark:bg-blue-900 dark:text-blue-200',
       [MovementType.ADJUSTMENT]: 'text-purple-600 bg-purple-50 dark:bg-purple-900 dark:text-purple-200',
-      [MovementType.RETURN]: 'text-yellow-600 bg-yellow-50 dark:bg-yellow-900 dark:text-yellow-200'
+      [MovementType.RETURN]: 'text-yellow-600 bg-yellow-50 dark:bg-yellow-900 dark:text-yellow-200',
+      [MovementType.RECEIPT]: 'text-green-600 bg-green-50 dark:bg-green-900 dark:text-green-200',
+      [MovementType.SHIPMENT]: 'text-red-600 bg-red-50 dark:bg-red-900 dark:text-red-200'
     };
     return colors[type] || 'text-gray-600 bg-gray-50';
   };
@@ -224,24 +226,19 @@ const MovementCard: React.FC<MovementCardProps> = ({
           </span>
         </div>
 
-        {/* Info Grid */}
-        <div className="grid grid-cols-3 gap-4 mb-4">
+        {/* Details */}
+        <div className="space-y-2 mb-4">
           <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-            <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-500">Movement Date</div>
-              <div className="font-medium text-gray-900 dark:text-white">
-                {format(new Date(movement.movementDate), 'MMM dd, yyyy')}
-              </div>
-            </div>
+            <Calendar className="w-4 h-4 mr-2" />
+            {format(new Date(movement.movementDate), 'MMM dd, yyyy HH:mm')}
           </div>
 
           {movement.sourceLocationId && (
             <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-              <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-500">Source</div>
-                <div className="font-medium text-gray-900 dark:text-white truncate" title={movement.sourceLocationId}>
+              <MapPin className="w-4 h-4 mr-2" />
+              <div className="flex items-center">
+                <span className="font-medium mr-2">From:</span>
+                <div className="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
                   {movement.sourceLocationId.slice(0, 8)}...
                 </div>
               </div>
@@ -250,10 +247,10 @@ const MovementCard: React.FC<MovementCardProps> = ({
 
           {movement.destinationLocationId && (
             <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-              <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-500">Destination</div>
-                <div className="font-medium text-gray-900 dark:text-white truncate" title={movement.destinationLocationId}>
+              <MapPin className="w-4 h-4 mr-2" />
+              <div className="flex items-center">
+                <span className="font-medium mr-2">To:</span>
+                <div className="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
                   {movement.destinationLocationId.slice(0, 8)}...
                 </div>
               </div>
@@ -261,7 +258,7 @@ const MovementCard: React.FC<MovementCardProps> = ({
           )}
         </div>
 
-        {/* Progress Bar */}
+        {/* ✅ FIXED: Progress Bar - Only show when movement has lines */}
         {movement.totalLines && movement.totalLines > 0 && (
           <div className="mb-4">
             <div className="flex justify-between items-center mb-2">

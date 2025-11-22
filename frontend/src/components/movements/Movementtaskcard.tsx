@@ -28,13 +28,14 @@ const MovementTaskCard: React.FC<MovementTaskCardProps> = ({ task, onUpdate }) =
     const icons = {
       [TaskType.PICK]: '📦',
       [TaskType.PACK]: '📦',
-      [TaskType.PUT_AWAY]: '📥',
+      [TaskType.PUTAWAY]: '📥',
       [TaskType.COUNT]: '🔢',
       [TaskType.INSPECT]: '🔍',
       [TaskType.LOAD]: '🚛',
       [TaskType.UNLOAD]: '📤',
-      [TaskType.STAGE]: '🏭',
-      [TaskType.REPLENISH]: '♻️'
+      [TaskType.SHIP]: '🏭',
+      [TaskType.TRANSFER]: '♻️',
+      [TaskType.RECEIVE]: '📥'
     };
     return icons[type] || '📋';
   };

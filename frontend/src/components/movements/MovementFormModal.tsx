@@ -1,3 +1,6 @@
+// frontend/src/components/movements/MovementFormModal.tsx
+// ✅ FIXED VERSION - Corrected movementTypes and added actualQuantity support
+
 import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Package, ArrowRight, AlertCircle, CheckCircle, ClipboardList } from 'lucide-react';
 import { locationService } from '@/services/location.service';
@@ -46,10 +49,11 @@ export const MovementFormModal = ({
     expectedDate: '',
   });
 
-  // Lines
+  // ✅ FIXED: Lines now include actualQuantity
   const [lines, setLines] = useState<Array<{
     itemId: string;
     requestedQuantity: number;
+    actualQuantity: number;  // ✅ ADDED
     uom: string;
     fromLocationId: string;
     toLocationId: string;
@@ -69,58 +73,25 @@ export const MovementFormModal = ({
   const getLocationDisplayName = (location: any): string => {
     if (!location) return 'Unknown';
     const name = location.name || location.locationName || '';
-    return name ? `${location.code} - ${name}` : location.code;
-  };
-
-  const formatScheduledTime = (dateTimeLocal: string): string | undefined => {
-    if (!dateTimeLocal) return undefined;
-    
-    try {
-      const date = new Date(dateTimeLocal);
-      
-      if (isNaN(date.getTime())) {
-        console.warn('⚠️ Invalid date:', dateTimeLocal);
-        return undefined;
-      }
-      
-      // Format: YYYY-MM-DDTHH:mm:ss (exactly like Postman example)
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
-      
-      const formatted = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-      console.log('📅 Date formatted:', dateTimeLocal, '→', formatted);
-      
-      return formatted;
-      
-    } catch (error) {
-      console.error('❌ Error formatting date:', error);
-      return undefined;
-    }
+    return name ? `${name} (${location.code || location.id.slice(0, 8)})` : location.code || location.id.slice(0, 8);
   };
 
   useEffect(() => {
     if (isOpen) {
-      loadAllData();
-    } else {
-      resetForm();
+      loadData();
     }
   }, [isOpen]);
 
-  const loadAllData = async () => {
+  const loadData = async () => {
     setDataLoading(true);
     try {
       await Promise.all([
         fetchWarehouses(),
         fetchLocations(),
-        fetchItems(),
+        fetchItems()
       ]);
     } catch (error) {
       console.error('❌ Error loading data:', error);
-      toast.error('Failed to load form data');
     } finally {
       setDataLoading(false);
     }
@@ -131,9 +102,6 @@ export const MovementFormModal = ({
       const response = await locationService.getWarehouses();
       const data = Array.isArray(response) ? response : response?.content || [];
       setWarehouses(data);
-      if (data.length === 1 && !formData.warehouseId) {
-        setFormData(prev => ({ ...prev, warehouseId: data[0].id }));
-      }
     } catch (error) {
       console.error('❌ Error fetching warehouses:', error);
       toast.error('Failed to load warehouses');
@@ -178,6 +146,7 @@ export const MovementFormModal = ({
     setCurrentStep(1);
   };
 
+  // ✅ FIXED: addLine now includes actualQuantity
   const addLine = () => {
     if (items.length === 0) {
       toast.error('❌ No items available');
@@ -187,6 +156,7 @@ export const MovementFormModal = ({
     const newLine = {
       itemId: items[0].id,
       requestedQuantity: 1,
+      actualQuantity: 0,  // ✅ ADDED: Initialize actualQuantity
       uom: 'EA',
       fromLocationId: formData.sourceLocationId || '',
       toLocationId: formData.destinationLocationId || '',
@@ -207,7 +177,6 @@ export const MovementFormModal = ({
     console.log(`🗑️ Line ${index + 1} removed`);
   };
 
-  // ✅ FIXED: Auto-fill locationId with destinationLocationId
   const addTask = () => {
     const newTask = {
       taskType: TaskType.PICK,
@@ -232,7 +201,17 @@ export const MovementFormModal = ({
     console.log(`🗑️ Task ${index + 1} removed`);
   };
 
-  // ✅ FIXED: Build submit data with proper formatting
+  const formatScheduledTime = (dateStr: string): string | undefined => {
+    if (!dateStr) return undefined;
+    try {
+      const date = new Date(dateStr);
+      return date.toISOString();
+    } catch {
+      return undefined;
+    }
+  };
+
+  // ✅ FIXED: buildSubmitData now includes actualQuantity
   const buildSubmitData = (): MovementRequestDto => {
     console.log('📋 Building submit data...');
     console.log('Current tasks:', tasks);
@@ -249,9 +228,11 @@ export const MovementFormModal = ({
       notes: formData.notes || undefined,
       expectedDate: formData.expectedDate ? formatScheduledTime(formData.expectedDate) : undefined,
       
+      // ✅ FIXED: lines now include actualQuantity
       lines: lines.map((line, index) => ({
         itemId: line.itemId,
         requestedQuantity: line.requestedQuantity,
+        actualQuantity: line.actualQuantity > 0 ? line.actualQuantity : undefined,  // ✅ ADDED
         uom: line.uom || 'EA',
         fromLocationId: line.fromLocationId || undefined,
         toLocationId: line.toLocationId || undefined,
@@ -260,14 +241,12 @@ export const MovementFormModal = ({
         notes: line.notes || undefined,
       })),
       
-      // ✅ FIXED: Format tasks exactly like Postman example
       tasks: tasks.length > 0 ? tasks.map((task, index) => {
         const formattedTask: any = {
           taskType: task.taskType,
           priority: task.priority || 5,
         };
         
-        // Only add fields if they have values
         if (task.locationId) {
           formattedTask.locationId = task.locationId;
         }
@@ -325,7 +304,12 @@ export const MovementFormModal = ({
         return false;
       }
       if (!line.requestedQuantity || line.requestedQuantity <= 0) {
-        toast.error(`❌ Line ${i + 1}: Quantity must be greater than 0`);
+        toast.error(`❌ Line ${i + 1}: Requested quantity must be greater than 0`);
+        return false;
+      }
+      // ✅ ADDED: Validate actualQuantity if provided
+      if (line.actualQuantity < 0) {
+        toast.error(`❌ Line ${i + 1}: Actual quantity cannot be negative`);
         return false;
       }
     }
@@ -333,7 +317,6 @@ export const MovementFormModal = ({
   };
 
   const validateStep3 = (): boolean => {
-    // Tasks are optional, just validate if any exist
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i];
       if (!task.taskType) {
@@ -412,17 +395,15 @@ export const MovementFormModal = ({
     loc => !formData.warehouseId || loc.warehouseId === formData.warehouseId
   );
 
+  // ✅ FIXED: movementTypes now matches types/index.ts exactly
   const movementTypes = [
-    { value: MovementType.RECEIPT, label: 'Receipt', icon: '📦' },
-    { value: MovementType.ISSUE, label: 'Issue', icon: '📤' },
+    { value: MovementType.INBOUND, label: 'Inbound', icon: '📥' },
+    { value: MovementType.OUTBOUND, label: 'Outbound', icon: '📤' },
     { value: MovementType.TRANSFER, label: 'Transfer', icon: '🔄' },
     { value: MovementType.ADJUSTMENT, label: 'Adjustment', icon: '⚖️' },
-    { value: MovementType.PICKING, label: 'Picking', icon: '🎯' },
-    { value: MovementType.PUTAWAY, label: 'Put Away', icon: '📥' },
     { value: MovementType.RETURN, label: 'Return', icon: '↩️' },
-    { value: MovementType.CYCLE_COUNT, label: 'Cycle Count', icon: '🔢' },
-    { value: MovementType.QUARANTINE, label: 'Quarantine', icon: '⚠️' },
-    { value: MovementType.RELOCATION, label: 'Relocation', icon: '📍' },
+    { value: MovementType.RECEIPT, label: 'Receipt', icon: '📦' },
+    { value: MovementType.SHIPMENT, label: 'Shipment', icon: '🚚' },
   ];
 
   const priorities = [
@@ -435,9 +416,13 @@ export const MovementFormModal = ({
 
   const taskTypes = [
     { value: TaskType.PICK, label: 'Pick', icon: '📦' },
-    { value: TaskType.PUTAWAY, label: 'Put Away', icon: '📥' },
-    { value: TaskType.COUNT, label: 'Count', icon: '🔢' },
     { value: TaskType.PACK, label: 'Pack', icon: '📦' },
+    { value: TaskType.SHIP, label: 'Ship', icon: '🚚' },
+    { value: TaskType.RECEIVE, label: 'Receive', icon: '📥' },
+    { value: TaskType.COUNT, label: 'Count', icon: '🔢' },
+    { value: TaskType.PUTAWAY, label: 'Put Away', icon: '📥' },
+    { value: TaskType.TRANSFER, label: 'Transfer', icon: '🔄' },
+    { value: TaskType.INSPECT, label: 'Inspect', icon: '🔍' },
     { value: TaskType.LOAD, label: 'Load', icon: '🚚' },
     { value: TaskType.UNLOAD, label: 'Unload', icon: '📥' },
   ];
@@ -532,11 +517,11 @@ export const MovementFormModal = ({
                           onClick={() => setFormData({ ...formData, type: type.value })}
                           className={`p-4 rounded-xl border-2 transition-all text-left ${
                             formData.type === type.value
-                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
                               : 'border-gray-200 dark:border-neutral-700 hover:border-blue-300'
                           }`}
                         >
-                          <div className="text-2xl mb-1">{type.icon}</div>
+                          <div className="text-2xl mb-2">{type.icon}</div>
                           <div className="font-semibold text-gray-900 dark:text-white">{type.label}</div>
                         </button>
                       ))}
@@ -551,14 +536,7 @@ export const MovementFormModal = ({
                     <select
                       className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
                       value={formData.warehouseId}
-                      onChange={(e) => {
-                        setFormData({ 
-                          ...formData, 
-                          warehouseId: e.target.value,
-                          sourceLocationId: '',
-                          destinationLocationId: ''
-                        });
-                      }}
+                      onChange={(e) => setFormData({ ...formData, warehouseId: e.target.value })}
                     >
                       <option value="">Select Warehouse</option>
                       {warehouses.map((warehouse) => (
@@ -593,9 +571,9 @@ export const MovementFormModal = ({
                         disabled={!formData.warehouseId}
                       >
                         <option value="">Select FROM location</option>
-                        {filteredLocations.map((location) => (
-                          <option key={location.id} value={location.id}>
-                            {getLocationDisplayName(location)}
+                        {filteredLocations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {getLocationDisplayName(loc)}
                           </option>
                         ))}
                       </select>
@@ -613,59 +591,44 @@ export const MovementFormModal = ({
                           const newLocationId = e.target.value;
                           setFormData({ ...formData, destinationLocationId: newLocationId });
                           
-                          // ✅ Update all lines toLocationId
+                          // Update all lines toLocationId
                           const updatedLines = lines.map(line => ({
                             ...line,
                             toLocationId: newLocationId
                           }));
                           setLines(updatedLines);
-                          
-                          // ✅ Update all tasks locationId automatically
-                          const updatedTasks = tasks.map(task => ({
-                            ...task,
-                            locationId: newLocationId
-                          }));
-                          setTasks(updatedTasks);
-                          
-                          console.log('📍 Updated destination for lines & tasks:', newLocationId);
                         }}
                         disabled={!formData.warehouseId}
                       >
                         <option value="">Select TO location</option>
-                        {filteredLocations.map((location) => (
-                          <option key={location.id} value={location.id}>
-                            {getLocationDisplayName(location)}
+                        {filteredLocations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {getLocationDisplayName(loc)}
                           </option>
                         ))}
                       </select>
                     </div>
                   </div>
 
-                  {/* Priority */}
-                  <div>
-                    <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                      Priority
-                    </label>
-                    <div className="flex gap-2">
-                      {priorities.map((priority) => (
-                        <button
-                          key={priority.value}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, priority: priority.value })}
-                          className={`flex-1 px-4 py-2 rounded-lg border-2 font-medium transition-all ${
-                            formData.priority === priority.value
-                              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-                              : 'border-gray-200 dark:border-neutral-700 text-gray-600 dark:text-gray-400'
-                          }`}
-                        >
-                          {priority.label}
-                        </button>
-                      ))}
+                  {/* Priority & Reference */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                        Priority
+                      </label>
+                      <select
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
+                        value={formData.priority}
+                        onChange={(e) => setFormData({ ...formData, priority: e.target.value as MovementPriority })}
+                      >
+                        {priorities.map((priority) => (
+                          <option key={priority.value} value={priority.value}>
+                            {priority.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  </div>
 
-                  {/* Optional Fields */}
-                  <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-neutral-700">
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                         Reference Number
@@ -673,7 +636,7 @@ export const MovementFormModal = ({
                       <input
                         type="text"
                         className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                        placeholder="e.g., TRF-2025-001"
+                        placeholder="Optional reference"
                         value={formData.referenceNumber}
                         onChange={(e) => setFormData({ ...formData, referenceNumber: e.target.value })}
                       />
@@ -767,7 +730,7 @@ export const MovementFormModal = ({
 
                             <div>
                               <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                                Quantity <span className="text-red-500">*</span>
+                                Requested Qty <span className="text-red-500">*</span>
                               </label>
                               <input
                                 type="number"
@@ -776,6 +739,22 @@ export const MovementFormModal = ({
                                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
                                 value={line.requestedQuantity}
                                 onChange={(e) => updateLine(index, 'requestedQuantity', parseFloat(e.target.value) || 0)}
+                              />
+                            </div>
+
+                            {/* ✅ ADDED: Actual Quantity field */}
+                            <div>
+                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+                                Actual Qty
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
+                                value={line.actualQuantity}
+                                onChange={(e) => updateLine(index, 'actualQuantity', parseFloat(e.target.value) || 0)}
+                                placeholder="0"
                               />
                             </div>
 
@@ -799,7 +778,7 @@ export const MovementFormModal = ({
                               <input
                                 type="text"
                                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                                placeholder="Optional notes for this line..."
+                                placeholder="Optional notes"
                                 value={line.notes}
                                 onChange={(e) => updateLine(index, 'notes', e.target.value)}
                               />
@@ -817,45 +796,25 @@ export const MovementFormModal = ({
                 <div className="space-y-6">
                   <div className="text-center mb-6">
                     <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                      📋 Step 3: Add Tasks (Optional)
+                      ✅ Step 3: Add Tasks (Optional)
                     </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Assign tasks • You can skip this step
-                    </p>
-                    
-                    {/* ✅ Info about auto-filled location */}
-                    {formData.destinationLocationId && (
-                      <div className="mt-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm text-blue-800 dark:text-blue-300">
-                        📍 Tasks will be automatically assigned to: <strong>
-                          {locations.find(loc => loc.id === formData.destinationLocationId)
-                            ? getLocationDisplayName(locations.find(loc => loc.id === formData.destinationLocationId))
-                            : 'Selected destination'}
-                        </strong>
-                      </div>
-                    )}
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Tasks help organize work for this movement</p>
                   </div>
 
                   <button
                     type="button"
                     onClick={addTask}
-                    className="w-full px-6 py-3 rounded-xl border-2 border-dashed border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all flex items-center justify-center gap-2 font-medium"
+                    className="w-full px-6 py-3 rounded-xl border-2 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 font-medium"
                   >
                     <Plus size={20} />
                     Add Task
                   </button>
 
                   {tasks.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <div className="text-center py-12 text-gray-500">
                       <ClipboardList className="mx-auto h-12 w-12 mb-4 opacity-50" />
                       <p className="font-medium">No tasks added</p>
-                      <p className="text-sm mt-2">Tasks are optional - you can skip this step</p>
-                      <button
-                        type="button"
-                        onClick={handleNext}
-                        className="mt-4 text-blue-600 dark:text-blue-400 font-medium hover:underline"
-                      >
-                        Skip to Review →
-                      </button>
+                      <p className="text-sm mt-2">Tasks are optional. Click "Add Task" to create one.</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -891,7 +850,7 @@ export const MovementFormModal = ({
 
                             <div>
                               <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                                Priority (1-10)
+                                Priority
                               </label>
                               <input
                                 type="number"
@@ -903,14 +862,9 @@ export const MovementFormModal = ({
                               />
                             </div>
 
-                            <div>
+                            <div className="col-span-2">
                               <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
                                 Location
-                                {task.locationId === formData.destinationLocationId && (
-                                  <span className="ml-2 text-xs text-blue-600 dark:text-blue-400">
-                                    ✓ Auto-filled
-                                  </span>
-                                )}
                               </label>
                               <select
                                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
@@ -918,24 +872,12 @@ export const MovementFormModal = ({
                                 onChange={(e) => updateTask(index, 'locationId', e.target.value)}
                               >
                                 <option value="">Select Location</option>
-                                {filteredLocations.map((location) => (
-                                  <option key={location.id} value={location.id}>
-                                    {getLocationDisplayName(location)}
+                                {filteredLocations.map((loc) => (
+                                  <option key={loc.id} value={loc.id}>
+                                    {getLocationDisplayName(loc)}
                                   </option>
                                 ))}
                               </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-                                Scheduled Start
-                              </label>
-                              <input
-                                type="datetime-local"
-                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-gray-900 dark:text-white"
-                                value={task.scheduledStartTime}
-                                onChange={(e) => updateTask(index, 'scheduledStartTime', e.target.value)}
-                              />
                             </div>
 
                             <div className="col-span-2">
@@ -963,131 +905,77 @@ export const MovementFormModal = ({
                 <div className="space-y-6">
                   <div className="text-center mb-6">
                     <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                      ✅ Step 4: Review & Create
+                      🔍 Step 4: Review & Submit
                     </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Review your movement details before creating
-                    </p>
                   </div>
 
-                  {/* Summary Card */}
-                  <div className="p-6 rounded-xl border-2 border-gray-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                      <Package size={20} />
-                      Movement Summary
-                    </h4>
-                    <div className="space-y-3 text-sm">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl">
+                    <h4 className="font-semibold text-gray-900 dark:text-white mb-4">Movement Summary</h4>
+                    <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span className="text-gray-600 dark:text-gray-400">Type:</span>
                         <span className="font-medium text-gray-900 dark:text-white">{formData.type}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Warehouse:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {warehouses.find(w => w.id === formData.warehouseId)?.name || 'N/A'}
-                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600 dark:text-gray-400">Priority:</span>
                         <span className="font-medium text-gray-900 dark:text-white">{formData.priority}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Item Lines:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{lines.length}</span>
+                        <span className="text-gray-600 dark:text-gray-400">Items:</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{lines.length} line(s)</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600 dark:text-gray-400">Tasks:</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{tasks.length}</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{tasks.length} task(s)</span>
                       </div>
-                      {formData.referenceNumber && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600 dark:text-gray-400">Reference:</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{formData.referenceNumber}</span>
-                        </div>
-                      )}
                     </div>
                   </div>
 
-                  {/* Tasks Info */}
-                  {tasks.length > 0 && (
-                    <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-                      <div className="flex items-start gap-3">
-                        <CheckCircle className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" size={20} />
-                        <div>
-                          <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
-                            {tasks.length} task{tasks.length > 1 ? 's' : ''} will be created
-                          </p>
-                          <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                            Tasks will be assigned to the destination location automatically
-                          </p>
-                        </div>
-                      </div>
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-yellow-800 dark:text-yellow-200">
+                      <p className="font-medium mb-1">Ready to submit?</p>
+                      <p>This movement will be created as a DRAFT and can be edited later.</p>
                     </div>
-                  )}
-
-                  {/* Warning if no tasks */}
-                  {tasks.length === 0 && (
-                    <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" size={20} />
-                        <div>
-                          <p className="text-sm font-medium text-yellow-900 dark:text-yellow-200">
-                            No tasks assigned
-                          </p>
-                          <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                            Movement will be created without tasks. You can add tasks later.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
 
             {/* ==================== FOOTER ==================== */}
-            <div className="px-6 py-4 border-t border-gray-200 dark:border-neutral-700 bg-gray-50 dark:bg-neutral-900 flex items-center justify-between">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                Step {currentStep} of 4
-              </div>
+            <div className="border-t border-gray-200 dark:border-neutral-700 px-6 py-4 flex items-center justify-between bg-gray-50 dark:bg-neutral-900">
+              <button
+                onClick={currentStep === 1 ? onClose : handleBack}
+                className="px-6 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-neutral-700 rounded-lg transition-colors font-medium"
+                disabled={loading}
+              >
+                {currentStep === 1 ? 'Cancel' : 'Back'}
+              </button>
 
-              <div className="flex gap-3">
-                {currentStep > 1 && (
-                  <button
-                    type="button"
-                    onClick={handleBack}
-                    disabled={loading}
-                    className="px-6 py-2.5 rounded-lg border-2 border-gray-300 dark:border-neutral-600 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
-                  >
-                    Back
-                  </button>
-                )}
-
+              <div className="flex gap-2">
                 {currentStep < 4 ? (
                   <button
-                    type="button"
                     onClick={handleNext}
-                    className="px-8 py-2.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-lg transition-all flex items-center gap-2"
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2"
+                    disabled={loading}
                   >
-                    {currentStep === 3 ? 'Review' : 'Next'}
-                    <ArrowRight size={18} />
+                    Next <ArrowRight size={18} />
                   </button>
                 ) : (
                   <button
-                    type="button"
                     onClick={handleSubmit}
+                    className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium flex items-center gap-2"
                     disabled={loading}
-                    className="px-8 py-2.5 rounded-lg bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold shadow-lg transition-all disabled:opacity-50 flex items-center gap-2"
                   >
                     {loading ? (
                       <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Creating...
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Submitting...
                       </>
                     ) : (
                       <>
                         <CheckCircle size={18} />
-                        Create Movement
+                        Submit Movement
                       </>
                     )}
                   </button>
