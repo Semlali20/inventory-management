@@ -413,11 +413,16 @@ export const MovementFormModal = ({
   );
 
   const movementTypes = [
-    { value: MovementType.TRANSFER, label: 'Transfer', icon: '🔄' },
     { value: MovementType.RECEIPT, label: 'Receipt', icon: '📦' },
     { value: MovementType.ISSUE, label: 'Issue', icon: '📤' },
+    { value: MovementType.TRANSFER, label: 'Transfer', icon: '🔄' },
     { value: MovementType.ADJUSTMENT, label: 'Adjustment', icon: '⚖️' },
+    { value: MovementType.PICKING, label: 'Picking', icon: '🎯' },
+    { value: MovementType.PUTAWAY, label: 'Put Away', icon: '📥' },
     { value: MovementType.RETURN, label: 'Return', icon: '↩️' },
+    { value: MovementType.CYCLE_COUNT, label: 'Cycle Count', icon: '🔢' },
+    { value: MovementType.QUARANTINE, label: 'Quarantine', icon: '⚠️' },
+    { value: MovementType.RELOCATION, label: 'Relocation', icon: '📍' },
   ];
 
   const priorities = [
@@ -425,11 +430,12 @@ export const MovementFormModal = ({
     { value: MovementPriority.NORMAL, label: 'Normal' },
     { value: MovementPriority.HIGH, label: 'High' },
     { value: MovementPriority.URGENT, label: 'Urgent' },
+    { value: MovementPriority.CRITICAL, label: 'Critical' },
   ];
 
   const taskTypes = [
     { value: TaskType.PICK, label: 'Pick', icon: '📦' },
-    { value: TaskType.PUT_AWAY, label: 'Put Away', icon: '📥' },
+    { value: TaskType.PUTAWAY, label: 'Put Away', icon: '📥' },
     { value: TaskType.COUNT, label: 'Count', icon: '🔢' },
     { value: TaskType.PACK, label: 'Pack', icon: '📦' },
     { value: TaskType.LOAD, label: 'Load', icon: '🚚' },
