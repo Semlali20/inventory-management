@@ -20,4 +20,17 @@ public class ItemEvent {
     private Boolean isActive;
     private LocalDateTime timestamp;
     private String eventType; // CREATED, UPDATED, DELETED
+private String categoryName;  // For display (like warehouseName in LocationDTO)
+
+private String description;
+private String attributes;  // JSON string of flexible attributes
+private String tags;
+private String imageUrl;
+private Boolean isSerialized;
+private Boolean isLotManaged;
+private Integer shelfLifeDays;
+private Boolean hazardousMaterial;
+private String temperatureControl;
+
+
 }

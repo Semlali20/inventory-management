@@ -19,7 +19,7 @@ public class ItemVariantDTO {
     private Boolean isActive;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-
+    private String itemVariantId;
     // Computed field - combines parent item attributes with variant attributes
     private String effectiveAttributes;  // JSON string
 }

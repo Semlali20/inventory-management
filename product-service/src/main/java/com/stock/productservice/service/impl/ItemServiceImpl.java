@@ -71,8 +71,14 @@ public class ItemServiceImpl implements ItemService {
                 .sku(savedItem.getSku())
                 .name(savedItem.getName())
                 .categoryId(savedItem.getCategoryId())
-                .itemVariantId(null) // No itemVariantId in this entity structure
+                .itemVariantId(null)
                 .isActive(savedItem.getIsActive())
+                // ADD THESE MISSING FIELDS:
+                .isSerialized(savedItem.getIsSerialized())
+                .isLotManaged(savedItem.getIsLotManaged())
+                .shelfLifeDays(savedItem.getShelfLifeDays())
+                .hazardousMaterial(savedItem.getHazardousMaterial())
+                .temperatureControl(savedItem.getTemperatureControl())
                 .timestamp(LocalDateTime.now())
                 .eventType("CREATED")
                 .build();
@@ -208,10 +214,15 @@ public class ItemServiceImpl implements ItemService {
                 .categoryId(updatedItem.getCategoryId())
                 .itemVariantId(null)
                 .isActive(updatedItem.getIsActive())
+                // ADD THESE MISSING FIELDS:
+                .isSerialized(updatedItem.getIsSerialized())
+                .isLotManaged(updatedItem.getIsLotManaged())
+                .shelfLifeDays(updatedItem.getShelfLifeDays())
+                .hazardousMaterial(updatedItem.getHazardousMaterial())
+                .temperatureControl(updatedItem.getTemperatureControl())
                 .timestamp(LocalDateTime.now())
                 .eventType("UPDATED")
                 .build();
-        eventPublisher.publishItemUpdated(event);
 
         return dto;
     }
@@ -234,6 +245,12 @@ public class ItemServiceImpl implements ItemService {
                 .categoryId(item.getCategoryId())
                 .itemVariantId(null)
                 .isActive(false)
+                // ADD THESE MISSING FIELDS:
+                .isSerialized(item.getIsSerialized())
+                .isLotManaged(item.getIsLotManaged())
+                .shelfLifeDays(item.getShelfLifeDays())
+                .hazardousMaterial(item.getHazardousMaterial())
+                .temperatureControl(item.getTemperatureControl())
                 .timestamp(LocalDateTime.now())
                 .eventType("DELETED")
                 .build();
@@ -292,4 +309,5 @@ public class ItemServiceImpl implements ItemService {
                 .updatedAt(item.getUpdatedAt())
                 .build();
     }
+
 }

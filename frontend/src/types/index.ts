@@ -6,13 +6,16 @@
 // ============================================
 
 export enum MovementType {
-  INBOUND = 'INBOUND',
-  OUTBOUND = 'OUTBOUND',
+  RECEIPT = 'RECEIPT',
+  ISSUE = 'ISSUE',
   TRANSFER = 'TRANSFER',
   ADJUSTMENT = 'ADJUSTMENT',
   RETURN = 'RETURN',
-  RECEIPT = 'RECEIPT',
-  SHIPMENT = 'SHIPMENT'
+  PICKING = 'PICKING',
+  PUTAWAY = 'PUTAWAY',
+  CYCLE_COUNT = 'CYCLE_COUNT',
+  RELOCATION = 'RELOCATION',
+  QUARANTINE = 'QUARANTINE'
 }
 
 export enum MovementStatus {
@@ -641,6 +644,7 @@ export interface PaginationParams {
 }
 
 export interface PaginatedResponse<T> {
+  [x: string]: Warehouse[];
   content: T[];
   totalElements: number;
   totalPages: number;

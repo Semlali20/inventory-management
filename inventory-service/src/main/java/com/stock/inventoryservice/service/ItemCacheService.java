@@ -33,19 +33,18 @@ public class ItemCacheService {
      */
     public ItemCacheDTO getItem(String itemId) {
         log.debug("Getting item from cache: {}", itemId);
-
+    
         String key = CACHE_PREFIX + itemId;
         ItemCacheDTO cachedItem = redisTemplate.opsForValue().get(key);
-
+    
         if (cachedItem == null) {
             log.error("Item not found in cache: {}. Cache must be synced via Kafka events.", itemId);
-            throw new ResourceNotFoundException("Item not found in cache: " + itemId);
+            throw new ResourceNotFoundException("Item not found in cache: " + itemId);  // ❌ THIS IS THE PROBLEM
         }
-
+    
         log.debug("Item found in cache: {}", itemId);
         return cachedItem;
     }
-
     /**
      * Get multiple items from cache
      */

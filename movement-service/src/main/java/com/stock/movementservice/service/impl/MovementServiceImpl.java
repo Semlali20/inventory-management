@@ -6,11 +6,13 @@ import com.stock.movementservice.dto.request.MovementUpdateRequestDto;
 import com.stock.movementservice.dto.response.MovementResponseDto;
 import com.stock.movementservice.dto.response.MovementSummaryDto;
 import com.stock.movementservice.entity.Movement;
+import com.stock.movementservice.entity.enums.LineStatus;
 import com.stock.movementservice.entity.enums.MovementStatus;
 import com.stock.movementservice.entity.enums.MovementType;
 import com.stock.movementservice.event.MovementCancelledEvent;
 import com.stock.movementservice.event.MovementCompletedEvent;
 import com.stock.movementservice.event.MovementCreatedEvent;
+import com.stock.movementservice.event.MovementKafkaEventPublisher;
 import com.stock.movementservice.event.MovementStatusChangedEvent;
 import com.stock.movementservice.exception.DuplicateReferenceNumberException;
 import com.stock.movementservice.exception.InvalidMovementStateException;
@@ -40,7 +42,8 @@ public class MovementServiceImpl implements MovementService {
     private final MovementRepository movementRepository;
     private final MovementMapper movementMapper;
     private final MovementValidationService validationService;
-    private final EventPublisherService eventPublisher;
+    private final MovementKafkaEventPublisher kafkaEventPublisher; // ✅ NEW - Add this    private final MovementKafkaEventPublisher kafkaEventPublisher; // ✅ NEW - Add this
+
 
     @Override
     public MovementResponseDto createMovement(MovementRequestDto requestDto, UUID userId) {
@@ -80,7 +83,7 @@ public class MovementServiceImpl implements MovementService {
                 savedMovement.getLines().size(),
                 userId
         );
-        eventPublisher.publishMovementCreatedEvent(event);
+        kafkaEventPublisher.publishMovementCreatedEvent(event);
 
         return movementMapper.toResponseDto(savedMovement);
     }
@@ -256,7 +259,7 @@ public class MovementServiceImpl implements MovementService {
                     requestDto.getReason(),
                     userId
             );
-            eventPublisher.publishMovementStatusChangedEvent(event);
+            kafkaEventPublisher.publishMovementStatusChangedEvent(event);
         }
 
         log.info("Movement updated successfully: {}", id);
@@ -310,58 +313,74 @@ public class MovementServiceImpl implements MovementService {
                 "Movement started",
                 userId
         );
-        eventPublisher.publishMovementStatusChangedEvent(event);
+        kafkaEventPublisher.publishMovementStatusChangedEvent(event);
 
         log.info("Movement started successfully: {}", id);
 
         return movementMapper.toResponseDto(updatedMovement);
     }
 
-    @Override
-    public MovementResponseDto completeMovement(UUID id, UUID userId) {
-        log.info("Completing movement: {} by user: {}", id, userId);
+@Override
+public MovementResponseDto completeMovement(UUID id, UUID userId) {
+    log.info("Completing movement: {} by user: {}", id, userId);
 
-        Movement movement = movementRepository.findByIdWithLines(id)
-                .orElseThrow(() -> new MovementNotFoundException(id));
+    Movement movement = movementRepository.findByIdWithLines(id)
+            .orElseThrow(() -> new MovementNotFoundException(id));
 
-        // Validate state transition
-        if (movement.getStatus() != MovementStatus.IN_PROGRESS &&
-                movement.getStatus() != MovementStatus.PARTIALLY_COMPLETED) {
-            throw new InvalidMovementStateException(id, movement.getStatus(), "complete");
-        }
-
-        MovementStatus oldStatus = movement.getStatus();
-        movement.setStatus(MovementStatus.COMPLETED);
-        movement.setActualDate(LocalDateTime.now());
-        movement.setCompletedBy(userId);
-        movement.setCompletedAt(LocalDateTime.now());
-
-        Movement updatedMovement = movementRepository.save(movement);
-
-        // Publish completion event
-        long completedLines = movement.getLines().stream()
-                .filter(line -> line.getStatus() == com.stock.movementservice.entity.enums.LineStatus.COMPLETED)
-                .count();
-
-        MovementCompletedEvent event = new MovementCompletedEvent(
-                movement.getId(),
-                movement.getType(),
-                movement.getWarehouseId(),
-                movement.getSourceLocationId(),
-                movement.getDestinationLocationId(),
-                movement.getReferenceNumber(),
-                LocalDateTime.now(),
-                movement.getLines().size(),
-                (int) completedLines,
-                userId
-        );
-        eventPublisher.publishMovementCompletedEvent(event);
-
-        log.info("Movement completed successfully: {}", id);
-
-        return movementMapper.toResponseDto(updatedMovement);
+    if (movement.getStatus() != MovementStatus.IN_PROGRESS &&
+            movement.getStatus() != MovementStatus.PARTIALLY_COMPLETED) {
+        throw new InvalidMovementStateException(id, movement.getStatus(), "complete");
     }
 
+    MovementStatus oldStatus = movement.getStatus();
+    movement.setStatus(MovementStatus.COMPLETED);
+    movement.setActualDate(LocalDateTime.now());
+    movement.setCompletedBy(userId);
+    movement.setCompletedAt(LocalDateTime.now());
+
+    Movement updatedMovement = movementRepository.save(movement);
+
+    // 🔥 BUILD LINE DATA
+    List<MovementCompletedEvent.MovementLineData> lineData = movement.getLines().stream()
+            .map(line -> new MovementCompletedEvent.MovementLineData(
+                    line.getId(),
+                    line.getItemId(),
+                    line.getRequestedQuantity(),
+                    line.getActualQuantity(),
+                    line.getUom(),
+                    line.getLotId(),
+                    line.getSerialId(),
+                    line.getFromLocationId(),
+                    line.getToLocationId()
+            ))
+            .collect(Collectors.toList());
+
+    long completedLines = movement.getLines().stream()
+            .filter(line -> line.getStatus() == LineStatus.COMPLETED)
+            .count();
+
+    // ✅ CREATE EVENT WITH LINES
+    MovementCompletedEvent event = new MovementCompletedEvent(
+            movement.getId(),
+            movement.getType().name(),
+            movement.getWarehouseId(),
+            movement.getSourceLocationId(),
+            movement.getDestinationLocationId(),
+            movement.getReferenceNumber(),
+            LocalDateTime.now(),
+            movement.getLines().size(),
+            (int) completedLines,
+            lineData,  // 🔥 INCLUDE LINES!
+            userId
+    );
+    
+    // ✅ PUBLISH TO KAFKA (not internal Spring events)
+    kafkaEventPublisher.publishMovementCompletedEvent(event);
+
+    log.info("Movement completed successfully: {}", id);
+
+    return movementMapper.toResponseDto(updatedMovement);
+} 
     @Override
     public MovementResponseDto cancelMovement(UUID id, String reason, UUID userId) {
         log.info("Cancelling movement: {} by user: {}", id, userId);
@@ -389,7 +408,7 @@ public class MovementServiceImpl implements MovementService {
                 reason,
                 userId
         );
-        eventPublisher.publishMovementCancelledEvent(event);
+        kafkaEventPublisher.publishMovementCancelledEvent(event);
 
         log.info("Movement cancelled successfully: {}", id);
 
@@ -425,7 +444,7 @@ public class MovementServiceImpl implements MovementService {
                 reason,
                 userId
         );
-        eventPublisher.publishMovementStatusChangedEvent(event);
+        kafkaEventPublisher.publishMovementStatusChangedEvent(event);
 
         log.info("Movement put on hold successfully: {}", id);
 
@@ -459,7 +478,7 @@ public class MovementServiceImpl implements MovementService {
                 "Movement released from hold",
                 userId
         );
-        eventPublisher.publishMovementStatusChangedEvent(event);
+        kafkaEventPublisher.publishMovementStatusChangedEvent(event);
 
         log.info("Movement released from hold successfully: {}", id);
 

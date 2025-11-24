@@ -144,12 +144,13 @@ public class ItemEventConsumer {
                 .sku(event.getSku())
                 .name(event.getName())
                 .categoryId(event.getCategoryId())
-                .categoryName(null) // Category name not in event, will be enriched later
+                .categoryName(null) // Will be enriched later if needed
                 .isActive(event.getIsActive())
+
                 .isSerialized(event.getIsSerialized())
                 .isLotManaged(event.getIsLotManaged())
                 .shelfLifeDays(event.getShelfLifeDays())
-                .imageUrl(null) // Image URL not in event
+                .imageUrl(null) // Not in event
                 .cachedAt(LocalDateTime.now())
                 .build();
     }

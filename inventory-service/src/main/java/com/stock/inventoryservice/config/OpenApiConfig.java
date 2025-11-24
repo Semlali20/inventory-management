@@ -16,11 +16,11 @@ public class OpenApiConfig {
     @Bean
     public OpenAPI productServiceOpenAPI() {
         Server devServer = new Server();
-        devServer.setUrl("http://localhost:8082");
+        devServer.setUrl("http://localhost:8086");
         devServer.setDescription("Development Server");
 
         Server dockerServer = new Server();
-        dockerServer.setUrl("http://api-gateway:8083/product-service");
+        dockerServer.setUrl("http://api-gateway:8080/Inventory-service");
         dockerServer.setDescription("Docker Server");
 
         Contact contact = new Contact();
