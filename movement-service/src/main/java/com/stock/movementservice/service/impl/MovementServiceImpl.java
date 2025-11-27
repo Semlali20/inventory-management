@@ -18,9 +18,9 @@ import com.stock.movementservice.exception.DuplicateReferenceNumberException;
 import com.stock.movementservice.exception.InvalidMovementStateException;
 import com.stock.movementservice.exception.MovementNotFoundException;
 import com.stock.movementservice.repository.MovementRepository;
-import com.stock.movementservice.service.EventPublisherService;
 import com.stock.movementservice.service.MovementService;
 import com.stock.movementservice.service.MovementValidationService;
+import com.stock.movementservice.service.MovementQuantityValidationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -42,8 +42,8 @@ public class MovementServiceImpl implements MovementService {
     private final MovementRepository movementRepository;
     private final MovementMapper movementMapper;
     private final MovementValidationService validationService;
-    private final MovementKafkaEventPublisher kafkaEventPublisher; // ✅ NEW - Add this    private final MovementKafkaEventPublisher kafkaEventPublisher; // ✅ NEW - Add this
-
+    private final MovementKafkaEventPublisher kafkaEventPublisher;
+    private final MovementQuantityValidationService quantityValidationService; // 🔥 NEW - Quantity validation
 
     @Override
     public MovementResponseDto createMovement(MovementRequestDto requestDto, UUID userId) {
@@ -56,6 +56,15 @@ public class MovementServiceImpl implements MovementService {
         if (requestDto.getReferenceNumber() != null &&
                 movementRepository.existsByReferenceNumber(requestDto.getReferenceNumber())) {
             throw new DuplicateReferenceNumberException(requestDto.getReferenceNumber());
+        }
+
+        // 🔥 VALIDATE QUANTITIES if status is PENDING or IN_PROGRESS
+        MovementStatus initialStatus = requestDto.getStatus() != null ? 
+                                       requestDto.getStatus() : MovementStatus.DRAFT;
+        
+        if (initialStatus == MovementStatus.PENDING || initialStatus == MovementStatus.IN_PROGRESS) {
+            log.info("🔍 Validating quantities for new movement with status: {}", initialStatus);
+            quantityValidationService.validateMovementQuantities(requestDto);
         }
 
         // Map DTO to entity
@@ -102,6 +111,7 @@ public class MovementServiceImpl implements MovementService {
     
         return movementMapper.toResponseDto(movement);
     }
+
     @Override
     @Transactional(readOnly = true)
     public MovementResponseDto getMovementByReferenceNumber(String referenceNumber) {
@@ -190,11 +200,29 @@ public class MovementServiceImpl implements MovementService {
     public MovementResponseDto updateMovement(UUID id, MovementUpdateRequestDto requestDto, UUID userId) {
         log.info("Updating movement: {} by user: {}", id, userId);
 
-        Movement movement = movementRepository.findById(id)
+        Movement movement = movementRepository.findByIdWithLines(id)
                 .orElseThrow(() -> new MovementNotFoundException(id));
 
         // Validate state transition
         MovementStatus oldStatus = movement.getStatus();
+
+        // 🔥 VALIDATE QUANTITIES if transitioning to PENDING or IN_PROGRESS
+        if (requestDto.getStatus() != null && 
+            (requestDto.getStatus() == MovementStatus.PENDING || 
+             requestDto.getStatus() == MovementStatus.IN_PROGRESS)) {
+            
+            log.info("🔍 Validating quantities before status change from {} to {}", 
+                    oldStatus, requestDto.getStatus());
+            
+            String sourceLocationId = movement.getSourceLocationId() != null ? 
+                                     movement.getSourceLocationId().toString() : null;
+            
+            quantityValidationService.validateExistingMovementLines(
+                movement.getLines(), 
+                sourceLocationId, 
+                movement.getType()
+            );
+        }
 
         // Update fields
         if (requestDto.getStatus() != null) {
@@ -289,7 +317,7 @@ public class MovementServiceImpl implements MovementService {
     public MovementResponseDto startMovement(UUID id, UUID userId) {
         log.info("Starting movement: {} by user: {}", id, userId);
 
-        Movement movement = movementRepository.findById(id)
+        Movement movement = movementRepository.findByIdWithLines(id)
                 .orElseThrow(() -> new MovementNotFoundException(id));
 
         // Validate state transition
@@ -297,6 +325,17 @@ public class MovementServiceImpl implements MovementService {
                 movement.getStatus() != MovementStatus.DRAFT) {
             throw new InvalidMovementStateException(id, movement.getStatus(), "start");
         }
+
+        // 🔥 VALIDATE QUANTITIES before starting
+        log.info("🔍 Validating quantities before starting movement");
+        String sourceLocationId = movement.getSourceLocationId() != null ? 
+                                 movement.getSourceLocationId().toString() : null;
+        
+        quantityValidationService.validateExistingMovementLines(
+            movement.getLines(), 
+            sourceLocationId, 
+            movement.getType()
+        );
 
         MovementStatus oldStatus = movement.getStatus();
         movement.setStatus(MovementStatus.IN_PROGRESS);
@@ -320,67 +359,68 @@ public class MovementServiceImpl implements MovementService {
         return movementMapper.toResponseDto(updatedMovement);
     }
 
-@Override
-public MovementResponseDto completeMovement(UUID id, UUID userId) {
-    log.info("Completing movement: {} by user: {}", id, userId);
+    @Override
+    public MovementResponseDto completeMovement(UUID id, UUID userId) {
+        log.info("Completing movement: {} by user: {}", id, userId);
 
-    Movement movement = movementRepository.findByIdWithLines(id)
-            .orElseThrow(() -> new MovementNotFoundException(id));
+        Movement movement = movementRepository.findByIdWithLines(id)
+                .orElseThrow(() -> new MovementNotFoundException(id));
 
-    if (movement.getStatus() != MovementStatus.IN_PROGRESS &&
-            movement.getStatus() != MovementStatus.PARTIALLY_COMPLETED) {
-        throw new InvalidMovementStateException(id, movement.getStatus(), "complete");
-    }
+        if (movement.getStatus() != MovementStatus.IN_PROGRESS &&
+                movement.getStatus() != MovementStatus.PARTIALLY_COMPLETED) {
+            throw new InvalidMovementStateException(id, movement.getStatus(), "complete");
+        }
 
-    MovementStatus oldStatus = movement.getStatus();
-    movement.setStatus(MovementStatus.COMPLETED);
-    movement.setActualDate(LocalDateTime.now());
-    movement.setCompletedBy(userId);
-    movement.setCompletedAt(LocalDateTime.now());
+        MovementStatus oldStatus = movement.getStatus();
+        movement.setStatus(MovementStatus.COMPLETED);
+        movement.setActualDate(LocalDateTime.now());
+        movement.setCompletedBy(userId);
+        movement.setCompletedAt(LocalDateTime.now());
 
-    Movement updatedMovement = movementRepository.save(movement);
+        Movement updatedMovement = movementRepository.save(movement);
 
-    // 🔥 BUILD LINE DATA
-    List<MovementCompletedEvent.MovementLineData> lineData = movement.getLines().stream()
-            .map(line -> new MovementCompletedEvent.MovementLineData(
-                    line.getId(),
-                    line.getItemId(),
-                    line.getRequestedQuantity(),
-                    line.getActualQuantity(),
-                    line.getUom(),
-                    line.getLotId(),
-                    line.getSerialId(),
-                    line.getFromLocationId(),
-                    line.getToLocationId()
-            ))
-            .collect(Collectors.toList());
+        // 🔥 BUILD LINE DATA
+        List<MovementCompletedEvent.MovementLineData> lineData = movement.getLines().stream()
+                .map(line -> new MovementCompletedEvent.MovementLineData(
+                        line.getId(),
+                        line.getItemId(),
+                        line.getRequestedQuantity(),
+                        line.getActualQuantity(),
+                        line.getUom(),
+                        line.getLotId(),
+                        line.getSerialId(),
+                        line.getFromLocationId(),
+                        line.getToLocationId()
+                ))
+                .collect(Collectors.toList());
 
-    long completedLines = movement.getLines().stream()
-            .filter(line -> line.getStatus() == LineStatus.COMPLETED)
-            .count();
+        long completedLines = movement.getLines().stream()
+                .filter(line -> line.getStatus() == LineStatus.COMPLETED)
+                .count();
 
-    // ✅ CREATE EVENT WITH LINES
-    MovementCompletedEvent event = new MovementCompletedEvent(
-            movement.getId(),
-            movement.getType().name(),
-            movement.getWarehouseId(),
-            movement.getSourceLocationId(),
-            movement.getDestinationLocationId(),
-            movement.getReferenceNumber(),
-            LocalDateTime.now(),
-            movement.getLines().size(),
-            (int) completedLines,
-            lineData,  // 🔥 INCLUDE LINES!
-            userId
-    );
-    
-    // ✅ PUBLISH TO KAFKA (not internal Spring events)
-    kafkaEventPublisher.publishMovementCompletedEvent(event);
+        // ✅ CREATE EVENT WITH LINES
+        MovementCompletedEvent event = new MovementCompletedEvent(
+                movement.getId(),
+                movement.getType().name(),
+                movement.getWarehouseId(),
+                movement.getSourceLocationId(),
+                movement.getDestinationLocationId(),
+                movement.getReferenceNumber(),
+                LocalDateTime.now(),
+                movement.getLines().size(),
+                (int) completedLines,
+                lineData,  // 🔥 INCLUDE LINES!
+                userId
+        );
+        
+        // ✅ PUBLISH TO KAFKA (inventory will be updated automatically)
+        kafkaEventPublisher.publishMovementCompletedEvent(event);
 
-    log.info("Movement completed successfully: {}", id);
+        log.info("✅ Movement completed successfully: {} - Inventory will be updated automatically via Kafka", id);
 
-    return movementMapper.toResponseDto(updatedMovement);
-} 
+        return movementMapper.toResponseDto(updatedMovement);
+    } 
+
     @Override
     public MovementResponseDto cancelMovement(UUID id, String reason, UUID userId) {
         log.info("Cancelling movement: {} by user: {}", id, userId);
@@ -455,13 +495,24 @@ public MovementResponseDto completeMovement(UUID id, UUID userId) {
     public MovementResponseDto releaseMovement(UUID id, UUID userId) {
         log.info("Releasing movement from hold: {} by user: {}", id, userId);
 
-        Movement movement = movementRepository.findById(id)
+        Movement movement = movementRepository.findByIdWithLines(id)
                 .orElseThrow(() -> new MovementNotFoundException(id));
 
         // Can only release movements that are on hold
         if (movement.getStatus() != MovementStatus.ON_HOLD) {
             throw new InvalidMovementStateException(id, movement.getStatus(), "release");
         }
+
+        // 🔥 VALIDATE QUANTITIES before releasing from hold
+        log.info("🔍 Validating quantities before releasing from hold");
+        String sourceLocationId = movement.getSourceLocationId() != null ? 
+                                 movement.getSourceLocationId().toString() : null;
+        
+        quantityValidationService.validateExistingMovementLines(
+            movement.getLines(), 
+            sourceLocationId, 
+            movement.getType()
+        );
 
         MovementStatus oldStatus = movement.getStatus();
         movement.setStatus(MovementStatus.PENDING);

@@ -12,7 +12,9 @@ spring:
       maximum-pool-size: 20
       minimum-idle: 10
       connection-timeout: 30000
-
+inventory:
+  service:
+    url: http://inventory-service:8086
   jpa:
     hibernate:
       ddl-auto: update

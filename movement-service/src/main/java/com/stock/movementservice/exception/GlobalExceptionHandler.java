@@ -15,9 +15,7 @@ import org.springframework.web.context.request.WebRequest;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @RestControllerAdvice
 @Slf4j
@@ -152,6 +150,28 @@ public class GlobalExceptionHandler {
                 request.getDescription(false),
                 LocalDateTime.now(),
                 ex.getValidationErrors()
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * 🔥 Handle InsufficientStockException (NEW)
+     * Returns validation-style error response with list of stock errors
+     */
+    @ExceptionHandler(InsufficientStockException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<ValidationErrorResponse> handleInsufficientStockException(
+            InsufficientStockException ex, WebRequest request) {
+        log.error("Insufficient stock: {}", ex.getMessage());
+
+        // Use ValidationErrorResponse to match your existing error structure
+        ValidationErrorResponse errorResponse = new ValidationErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                ex.getMessage(),
+                request.getDescription(false),
+                LocalDateTime.now(),
+                ex.getErrors()  // List of error messages per line
         );
 
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
