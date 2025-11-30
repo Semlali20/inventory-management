@@ -66,7 +66,14 @@ const MovementFormModal = ({
   const [items, setItems] = useState<Item[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
-
+  const [inventoryInfo, setInventoryInfo] = useState<{
+    itemId: string;
+    locationId: string;
+    available: number;
+    onHand: number;
+    reserved: number;
+  } | null>(null);
+  const [checkingInventory, setCheckingInventory] = useState(false);
   // Form data
   const [formData, setFormData] = useState<MovementFormData>({
     type: MovementType.TRANSFER,
@@ -89,6 +96,61 @@ const MovementFormModal = ({
     toLocationId: "",
     notes: "",
   });
+  const fetchInventoryInfo = async (itemId: string, locationId: string) => {
+    if (!itemId || !locationId) {
+      setInventoryInfo(null);
+      return;
+    }
+
+    try {
+      setCheckingInventory(true);
+      
+      // ✅ Use getInventoriesByLocation and filter by itemId
+      const inventories = await inventoryService.getInventoriesByLocation(locationId);
+      const inventory = inventories.find((inv: any) => inv.itemId === itemId);
+
+      if (inventory) {
+        setInventoryInfo({
+          itemId,
+          locationId,
+          available: inventory.availableQuantity || 0,
+          onHand: inventory.quantityOnHand || 0,
+          reserved: inventory.quantityReserved || 0,
+        });
+        console.log("📊 Inventory fetched:", inventory);
+      } else {
+        // No inventory found
+        setInventoryInfo({
+          itemId,
+          locationId,
+          available: 0,
+          onHand: 0,
+          reserved: 0,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching inventory:", error);
+      setInventoryInfo({
+        itemId,
+        locationId,
+        available: 0,
+        onHand: 0,
+        reserved: 0,
+      });
+    } finally {
+      setCheckingInventory(false);
+    }
+  };
+
+  // ✅ NEW: Handle item change with inventory fetch
+  const handleItemChange = (itemId: string) => {
+    setNewLine({ ...newLine, itemId });
+
+    // Auto-fetch inventory if we have source location
+    if (itemId && formData.sourceLocationId) {
+      fetchInventoryInfo(itemId, formData.sourceLocationId);
+    }
+  };
 
   const [tasks, setTasks] = useState<TaskFormData[]>([]);
 
@@ -648,6 +710,10 @@ const MovementFormModal = ({
                           ...formData,
                           sourceLocationId: e.target.value,
                         });
+                        // ✅ Re-fetch inventory if item is already selected
+                        if (newLine.itemId && e.target.value) {
+                          fetchInventoryInfo(newLine.itemId, e.target.value);
+                        }
                       }}
                       className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                       disabled={!formData.warehouseId}
@@ -892,13 +958,11 @@ const MovementFormModal = ({
                           Item <span className="text-red-500">*</span>
                         </label>
                         <select
-                          value={newLine.itemId}
-                          onChange={(e) =>
-                            setNewLine({ ...newLine, itemId: e.target.value })
-                          }
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                          required
-                        >
+                        value={newLine.itemId}
+                        onChange={(e) => handleItemChange(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                        required
+                      >
                           <option value="">Select Item</option>
                           {items.map((item) => (
                             <option key={item.id} value={item.id}>
@@ -907,7 +971,91 @@ const MovementFormModal = ({
                           ))}
                         </select>
                       </div>
+{/* ✅ INVENTORY INFO DISPLAY */}
+{inventoryInfo && inventoryInfo.itemId === newLine.itemId && (
+                        <div className="col-span-2 mt-2">
+                          <div
+                            className={`rounded-lg p-3 ${
+                              inventoryInfo.available >= (newLine.requestedQuantity || 0)
+                                ? "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
+                                : "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                📦 Inventory Status at Source Location
+                              </span>
+                              {checkingInventory && (
+                                <span className="text-xs text-gray-500">Loading...</span>
+                              )}
+                            </div>
 
+                            <div className="grid grid-cols-3 gap-3 text-sm">
+                              <div>
+                                <div className="text-gray-600 dark:text-gray-400">On Hand</div>
+                                <div className="text-lg font-bold text-gray-900 dark:text-white">
+                                  {inventoryInfo.onHand}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="text-gray-600 dark:text-gray-400">Reserved</div>
+                                <div className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                                  {inventoryInfo.reserved}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="text-gray-600 dark:text-gray-400">Available</div>
+                                <div
+                                  className={`text-lg font-bold ${
+                                    inventoryInfo.available >= (newLine.requestedQuantity || 0)
+                                      ? "text-green-600 dark:text-green-400"
+                                      : "text-red-600 dark:text-red-400"
+                                  }`}
+                                >
+                                  {inventoryInfo.available}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Warning if insufficient */}
+                            {newLine.requestedQuantity > 0 &&
+                              inventoryInfo.available < newLine.requestedQuantity && (
+                                <div className="mt-2 flex items-center gap-2 text-red-600 dark:text-red-400">
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                  <span className="text-sm font-medium">
+                                    Insufficient stock! Only {inventoryInfo.available} units available,
+                                    but you requested {newLine.requestedQuantity}
+                                  </span>
+                                </div>
+                              )}
+
+                            {/* Success message */}
+                            {newLine.requestedQuantity > 0 &&
+                              inventoryInfo.available >= newLine.requestedQuantity && (
+                                <div className="mt-2 flex items-center gap-2 text-green-600 dark:text-green-400">
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                  <span className="text-sm font-medium">
+                                    ✓ Stock available ({inventoryInfo.available - newLine.requestedQuantity} will remain)
+                                  </span>
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      )}
                       {/* Quantity */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

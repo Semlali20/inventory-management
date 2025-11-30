@@ -37,8 +37,8 @@ public class MovementEventConsumer {
     @KafkaListener(
             topics = "movement.completed",
             groupId = "inventory-service-group",
-            containerFactory = "kafkaListenerContainerFactory"
-    )
+            containerFactory = "movementKafkaListenerContainerFactory"  // 🔥 Use the dedicated factory!
+        )
     @Transactional
     public void handleMovementCompleted(
             @Payload MovementCompletedEvent event,
