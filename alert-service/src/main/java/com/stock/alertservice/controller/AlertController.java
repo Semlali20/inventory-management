@@ -78,6 +78,20 @@ public class AlertController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/unacknowledged")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ALERT_MANAGER', 'VIEWER')")
+    @Operation(summary = "Récupérer les alertes non acquittées", description = "Récupère toutes les alertes qui n'ont pas encore été acquittées")
+    public ResponseEntity<PageResponse<AlertResponse>> getUnacknowledgedAlerts(
+            @Parameter(description = "Numéro de page") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Taille de page") @RequestParam(defaultValue = "10") int size) {
+
+        log.info("REST request to get unacknowledged alerts - page: {}, size: {}", page, size);
+
+        PageResponse<AlertResponse> response = alertService.getUnacknowledgedAlerts(page, size);
+
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/status/{status}")
     @PreAuthorize("hasAnyRole('ADMIN', 'ALERT_MANAGER', 'VIEWER')")
     @Operation(summary = "Récupérer les alertes par statut", description = "Récupère les alertes par statut")

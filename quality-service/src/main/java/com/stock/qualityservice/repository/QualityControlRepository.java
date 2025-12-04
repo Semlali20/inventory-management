@@ -86,4 +86,8 @@ public interface QualityControlRepository extends JpaRepository<QualityControl, 
     @Query("SELECT qc FROM QualityControl qc WHERE qc.approvedBy IS NOT NULL AND qc.approvedAt BETWEEN :startDate AND :endDate")
     List<QualityControl> findApprovedInspections(@Param("startDate") LocalDateTime startDate,
                                                  @Param("endDate") LocalDateTime endDate);
+
+    boolean existsByRelatedMovementIdAndItemId(String relatedMovementId, String itemId);
+
+    List<QualityControl> findTop5ByItemIdOrderByCreatedAtDesc(String itemId);
 }

@@ -36,6 +36,8 @@ public interface QuarantineService {
 
     QuarantineResponse releaseQuarantine(String id, String releaseNotes);
 
+    QuarantineResponse rejectQuarantine(String id, String reason);
+
     QuarantineResponse extendQuarantine(String id, LocalDateTime newEndDate, String reason);
 
     void deleteQuarantine(String id);

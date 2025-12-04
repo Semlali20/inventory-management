@@ -21,6 +21,9 @@ public class Quarantine {
     @Column(name = "id", updatable = false, nullable = false)
     private String id;
 
+    @Column(name = "quarantine_number", unique = true, nullable = false)
+    private String quarantineNumber;
+
     @Column(name = "item_id", nullable = false)
     private String itemId;
 
@@ -73,6 +76,9 @@ public class Quarantine {
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
+
+    @Column(name = "related_inspection_id")
+    private String relatedInspectionId;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;

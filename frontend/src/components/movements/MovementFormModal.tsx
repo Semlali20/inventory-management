@@ -2,7 +2,7 @@
 // ✅ COMPLETE VERSION WITH 100% BACKEND INTEGRATION
 
 import { useState, useEffect } from "react";
-import { X, Plus, Trash2, Check, ArrowRight } from "lucide-react";
+import { X, Plus, Trash2, Check, ArrowRight, Info } from "lucide-react";
 import { movementService } from "@/services/movement.service";
 import { productService } from "@/services/product.service";
 import { locationService } from "@/services/location.service";
@@ -17,6 +17,13 @@ import {
 } from "@/types";
 import type { Item, Location, Warehouse } from "@/types";
 import { toast } from "react-hot-toast";
+import {
+  movementTypeConfigs,
+  getMovementTypeConfig,
+  requiresSource,
+  requiresDestination,
+  requiresStockCheck
+} from "@/config/movementTypeConfig";
 
 interface MovementFormModalProps {
   isOpen: boolean;
@@ -76,7 +83,7 @@ const MovementFormModal = ({
   const [checkingInventory, setCheckingInventory] = useState(false);
   // Form data
   const [formData, setFormData] = useState<MovementFormData>({
-    type: MovementType.TRANSFER,
+    type: MovementType.RECEIPT,
     warehouseId: "",
     sourceLocationId: "",
     destinationLocationId: "",
@@ -154,68 +161,16 @@ const MovementFormModal = ({
 
   const [tasks, setTasks] = useState<TaskFormData[]>([]);
 
-  const movementTypes = [
-    {
-      value: MovementType.RECEIPT,
-      label: "Receipt",
-      icon: "📥",
-      desc: "Receive incoming goods",
-    },
-    {
-      value: MovementType.ISSUE,
-      label: "Issue",
-      icon: "📤",
-      desc: "Issue goods out",
-    },
-    {
-      value: MovementType.TRANSFER,
-      label: "Transfer",
-      icon: "🔄",
-      desc: "Transfer between locations",
-    },
-    {
-      value: MovementType.PICKING,
-      label: "Picking",
-      icon: "📦",
-      desc: "Pick items for orders",
-    },
-    {
-      value: MovementType.PUTAWAY,
-      label: "Putaway",
-      icon: "🏪",
-      desc: "Put items into storage",
-    },
-    {
-      value: MovementType.RETURN,
-      label: "Return",
-      icon: "↩️",
-      desc: "Return goods",
-    },
-    {
-      value: MovementType.ADJUSTMENT,
-      label: "Adjustment",
-      icon: "⚖️",
-      desc: "Adjust stock levels",
-    },
-    {
-      value: MovementType.CYCLE_COUNT,
-      label: "Cycle Count",
-      icon: "🔢",
-      desc: "Count inventory",
-    },
-    {
-      value: MovementType.RELOCATION,
-      label: "Relocation",
-      icon: "🔄",
-      desc: "Relocate items",
-    },
-    {
-      value: MovementType.QUARANTINE,
-      label: "Quarantine",
-      icon: "🚫",
-      desc: "Quarantine items",
-    },
-  ];
+  // Get current movement type config
+  const currentConfig = getMovementTypeConfig(formData.type);
+
+  // Convert configs to array for selection
+  const movementTypes = Object.values(movementTypeConfigs).map(config => ({
+    value: config.type,
+    label: config.label,
+    icon: config.icon,
+    desc: config.description
+  }));
 
   // ✅ Load reference data from backend
   // ✅ FIXED: Load reference data from backend
@@ -289,7 +244,7 @@ const MovementFormModal = ({
     if (!isOpen) {
       setCurrentStep(1);
       setFormData({
-        type: MovementType.INBOUND,
+        type: MovementType.RECEIPT,
         warehouseId: "",
         sourceLocationId: "",
         destinationLocationId: "",
@@ -300,6 +255,7 @@ const MovementFormModal = ({
       });
       setLines([]);
       setTasks([]);
+      setInventoryInfo(null);
     }
   }, [isOpen]);
 
@@ -344,7 +300,7 @@ const MovementFormModal = ({
 
   // ✅ Add line with validation
 
-  // ✅ UPDATED: Validate stock for ISSUE, TRANSFER, RETURN (not INBOUND)
+  // ✅ UPDATED: Use type config for stock validation
   const addLine = async () => {
     // Validate required fields
     if (!newLine.itemId || !newLine.requestedQuantity) {
@@ -356,15 +312,10 @@ const MovementFormModal = ({
     const sourceLocation = formData.sourceLocationId;
     const destinationLocation = formData.destinationLocationId;
 
-    // ✅ UPDATED: Validate stock for ISSUE/TRANSFER/RETURN (movements that remove stock)
-    if (
-      formData.type === MovementType.ISSUE ||
-      formData.type === MovementType.TRANSFER ||
-      formData.type === MovementType.RETURN ||
-      formData.type === MovementType.PICKING
-    ) {
+    // ✅ UPDATED: Use config to determine if stock validation is needed
+    if (requiresStockCheck(formData.type)) {
       if (!sourceLocation) {
-        toast.error("Please select a source location in Step 1 first");
+        toast.error(`Please select ${currentConfig.sourceLabel || 'source location'} in Step 1 first`);
         return;
       }
 
@@ -457,22 +408,24 @@ const MovementFormModal = ({
         return;
       }
 
-      // ✅ NEW: Log what we have
+      // ✅ UPDATED: Validate required locations based on type config
+      if (requiresSource(formData.type) && !formData.sourceLocationId) {
+        toast.error(`${currentConfig.sourceLabel || 'Source location'} is required for ${currentConfig.label}`);
+        return;
+      }
+
+      if (requiresDestination(formData.type) && !formData.destinationLocationId) {
+        toast.error(`${currentConfig.destinationLabel || 'Destination location'} is required for ${currentConfig.label}`);
+        return;
+      }
+
+      // ✅ Log what we have
       console.log("📋 Step 1 Complete - Form Data:", {
         type: formData.type,
         warehouseId: formData.warehouseId,
         sourceLocationId: formData.sourceLocationId,
         destinationLocationId: formData.destinationLocationId,
       });
-
-      // ✅ Optional: Warn if locations not set (but don't block)
-      if (!formData.sourceLocationId && !formData.destinationLocationId) {
-        const proceed = window.confirm(
-          "You haven't selected source or destination locations. " +
-            "Lines will not have location information. Continue anyway?"
-        );
-        if (!proceed) return;
-      }
     }
 
     if (currentStep === 2) {
@@ -669,6 +622,29 @@ const MovementFormModal = ({
                     </div>
                   </div>
 
+                  {/* Scenario Help Box */}
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-xl p-4 border-2 border-blue-200 dark:border-blue-800">
+                    <div className="flex items-start gap-3">
+                      <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
+                          {currentConfig.icon} {currentConfig.label} Scenario
+                        </h4>
+                        <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                          {currentConfig.scenario}
+                        </p>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                          <div className="font-semibold mb-2">Workflow Steps:</div>
+                          <ol className="list-decimal list-inside space-y-1 text-xs">
+                            {currentConfig.workflowSteps.map((step, idx) => (
+                              <li key={idx}>{step}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Warehouse - DROPDOWN */}
                   <div>
                     <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
@@ -694,77 +670,89 @@ const MovementFormModal = ({
                     </select>
                   </div>
 
-                  {/* Source Location - DROPDOWN */}
-                  <div>
-                    <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                      Source Location
-                    </label>
-                    <select
-                      value={formData.sourceLocationId}
-                      onChange={(e) => {
-                        console.log(
-                          "🔵 Source location changed:",
-                          e.target.value
-                        );
-                        setFormData({
-                          ...formData,
-                          sourceLocationId: e.target.value,
-                        });
-                        // ✅ Re-fetch inventory if item is already selected
-                        if (newLine.itemId && e.target.value) {
-                          fetchInventoryInfo(newLine.itemId, e.target.value);
-                        }
-                      }}
-                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
-                      disabled={!formData.warehouseId}
-                    >
-                      <option value="">Select Source Location</option>
-                      {filteredLocations.map((loc) => (
-                        <option key={loc.id} value={loc.id}>
-                          {loc.name} - {loc.code}
-                        </option>
-                      ))}
-                    </select>
-                    {!formData.warehouseId && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Select a warehouse first
-                      </p>
-                    )}
-                  </div>
+                  {/* Source Location - DROPDOWN (Conditional) */}
+                  {requiresSource(formData.type) && (
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                        {currentConfig.sourceLabel || 'Source Location'}
+                        {requiresSource(formData.type) && <span className="text-red-500"> *</span>}
+                      </label>
+                      <select
+                        value={formData.sourceLocationId}
+                        onChange={(e) => {
+                          console.log(
+                            "🔵 Source location changed:",
+                            e.target.value
+                          );
+                          setFormData({
+                            ...formData,
+                            sourceLocationId: e.target.value,
+                          });
+                          // ✅ Re-fetch inventory if item is already selected
+                          if (newLine.itemId && e.target.value) {
+                            fetchInventoryInfo(newLine.itemId, e.target.value);
+                          }
+                        }}
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        disabled={!formData.warehouseId}
+                        required={requiresSource(formData.type)}
+                      >
+                        <option value="">Select {currentConfig.sourceLabel || 'Source Location'}</option>
+                        {filteredLocations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {loc.name} - {loc.code}
+                          </option>
+                        ))}
+                      </select>
+                      {!formData.warehouseId ? (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Select a warehouse first
+                        </p>
+                      ) : currentConfig.locationHelp && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                          💡 {currentConfig.locationHelp}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
-                  {/* Destination Location - DROPDOWN */}
-                  <div>
-                    <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                      Destination Location
-                    </label>
-                    <select
-                      value={formData.destinationLocationId}
-                      onChange={(e) => {
-                        console.log(
-                          "🟢 Destination location changed:",
-                          e.target.value
-                        );
-                        setFormData({
-                          ...formData,
-                          destinationLocationId: e.target.value,
-                        });
-                      }}
-                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
-                      disabled={!formData.warehouseId}
-                    >
-                      <option value="">Select Destination Location</option>
-                      {filteredLocations.map((loc) => (
-                        <option key={loc.id} value={loc.id}>
-                          {loc.name} - {loc.code}
-                        </option>
-                      ))}
-                    </select>
-                    {!formData.warehouseId && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Select a warehouse first
-                      </p>
-                    )}
-                  </div>
+                  {/* Destination Location - DROPDOWN (Conditional) */}
+                  {requiresDestination(formData.type) && (
+                    <div>
+                      <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                        {currentConfig.destinationLabel || 'Destination Location'}
+                        {requiresDestination(formData.type) && <span className="text-red-500"> *</span>}
+                      </label>
+                      <select
+                        value={formData.destinationLocationId}
+                        onChange={(e) => {
+                          console.log(
+                            "🟢 Destination location changed:",
+                            e.target.value
+                          );
+                          setFormData({
+                            ...formData,
+                            destinationLocationId: e.target.value,
+                          });
+                        }}
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        disabled={!formData.warehouseId}
+                        required={requiresDestination(formData.type)}
+                      >
+                        <option value="">Select {currentConfig.destinationLabel || 'Destination Location'}</option>
+                        {filteredLocations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {loc.name} - {loc.code}
+                          </option>
+                        ))}
+                      </select>
+                      {!formData.warehouseId && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Select a warehouse first
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Priority & Expected Date */}
                   <div className="grid grid-cols-2 gap-4">
@@ -811,6 +799,7 @@ const MovementFormModal = ({
                   <div>
                     <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
                       Reference Number
+                      {currentConfig.requiresReferenceNumber && <span className="text-red-500"> *</span>}
                     </label>
                     <input
                       type="text"
@@ -821,8 +810,9 @@ const MovementFormModal = ({
                           referenceNumber: e.target.value,
                         })
                       }
-                      placeholder="Optional reference number"
+                      placeholder={currentConfig.referencePlaceholder || "Optional reference number"}
                       className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                      required={currentConfig.requiresReferenceNumber}
                     />
                   </div>
 
@@ -852,7 +842,8 @@ const MovementFormModal = ({
                         📦 Step 2: Movement Lines
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        Add items to this movement (Stock validation enabled)
+                        Add items to this movement
+                        {requiresStockCheck(formData.type) && " (Stock validation enabled)"}
                       </p>
 
                       {/* ✅ Show selected locations info with DETAILED DEBUG */}
@@ -971,8 +962,8 @@ const MovementFormModal = ({
                           ))}
                         </select>
                       </div>
-{/* ✅ INVENTORY INFO DISPLAY */}
-{inventoryInfo && inventoryInfo.itemId === newLine.itemId && (
+{/* ✅ INVENTORY INFO DISPLAY - Only for types that require stock validation */}
+{requiresStockCheck(formData.type) && inventoryInfo && inventoryInfo.itemId === newLine.itemId && (
                         <div className="col-span-2 mt-2">
                           <div
                             className={`rounded-lg p-3 ${
@@ -1122,7 +1113,7 @@ const MovementFormModal = ({
                       className="mt-4 w-full flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     >
                       <Plus className="w-4 h-4 mr-2" />
-                      Add Line (With Stock Check)
+                      Add Line {requiresStockCheck(formData.type) && "(Stock Validated)"}
                     </button>
                   </div>
 
@@ -1190,6 +1181,24 @@ const MovementFormModal = ({
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                         Add tasks for this movement
                       </p>
+                      {/* Suggested Tasks */}
+                      {currentConfig.suggestedTasks.length > 0 && (
+                        <div className="mt-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                          <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                            💡 Suggested tasks for {currentConfig.label}:
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {currentConfig.suggestedTasks.map((taskType) => (
+                              <span
+                                key={taskType}
+                                className="text-xs px-2 py-1 bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-200 rounded"
+                              >
+                                {taskType}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"

@@ -41,4 +41,6 @@ public class QuarantineRequest {
     private String quarantineType; // MANUAL, AUTOMATIC, RULE_BASED
 
     private String notes;
+
+    private String relatedInspectionId;
 }

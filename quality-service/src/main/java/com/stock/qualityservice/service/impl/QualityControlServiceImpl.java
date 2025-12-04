@@ -31,6 +31,9 @@ import java.util.stream.Collectors;
 public class QualityControlServiceImpl implements QualityControlService {
 
     private final QualityControlRepository qualityControlRepository;
+    private final com.stock.qualityservice.event.QualityEventPublisher qualityEventPublisher;
+    private final com.stock.qualityservice.service.QuarantineService quarantineService;
+    private final com.stock.qualityservice.client.LocationServiceClient locationServiceClient;
 
     @Override
     public QualityControlResponse createQualityControl(QualityControlRequest request) {
@@ -150,40 +153,105 @@ public class QualityControlServiceImpl implements QualityControlService {
 
     @Override
     public QualityControlResponse approveQualityControl(String id) {
-        log.info("Approving quality control ID: {}", id);
+        log.info("✅ Approving quality control ID: {}", id);
 
         QualityControl inspection = qualityControlRepository.findById(id)
                 .orElseThrow(() -> new InspectionNotFoundException(id));
 
-        if (inspection.getStatus() != QCStatus.PASSED && inspection.getStatus() != QCStatus.FAILED) {
+        if (inspection.getStatus() == QCStatus.PASSED) {
+            log.warn("⚠️ Inspection already approved: {}", id);
+            return mapToResponse(inspection);
+        }
+
+        if (inspection.getStatus() != QCStatus.PENDING && inspection.getStatus() != QCStatus.IN_PROGRESS) {
             throw new InvalidInspectionStateException(id, inspection.getStatus(), "approve");
         }
 
+        // Update inspection status
+        inspection.setStatus(QCStatus.PASSED);
         inspection.setApprovedBy("SYSTEM"); // TODO: Get from security context
         inspection.setApprovedAt(LocalDateTime.now());
         inspection.setDisposition(Disposition.ACCEPT);
+        inspection.setEndTime(LocalDateTime.now());
 
         QualityControl approvedInspection = qualityControlRepository.save(inspection);
-        log.info("Quality control approved successfully: {}", id);
+        log.info("✅ Quality control approved successfully: {}", id);
+
+        // Publish inspection completed event
+        qualityEventPublisher.publishInspectionCompleted(approvedInspection);
 
         return mapToResponse(approvedInspection);
     }
 
     @Override
     public QualityControlResponse rejectQualityControl(String id, String reason) {
-        log.info("Rejecting quality control ID: {} with reason: {}", id, reason);
+        log.info("❌ Rejecting quality control ID: {} with reason: {}", id, reason);
 
         QualityControl inspection = qualityControlRepository.findById(id)
                 .orElseThrow(() -> new InspectionNotFoundException(id));
 
+        if (inspection.getStatus() == QCStatus.FAILED) {
+            log.warn("⚠️ Inspection already rejected: {}", id);
+            return mapToResponse(inspection);
+        }
+
+        if (inspection.getStatus() != QCStatus.PENDING && inspection.getStatus() != QCStatus.IN_PROGRESS) {
+            throw new InvalidInspectionStateException(id, inspection.getStatus(), "reject");
+        }
+
+        // Update inspection status
         inspection.setStatus(QCStatus.FAILED);
         inspection.setDisposition(Disposition.REJECT);
         inspection.setInspectorNotes(reason);
         inspection.setApprovedBy("SYSTEM"); // TODO: Get from security context
         inspection.setApprovedAt(LocalDateTime.now());
+        inspection.setEndTime(LocalDateTime.now());
 
         QualityControl rejectedInspection = qualityControlRepository.save(inspection);
-        log.info("Quality control rejected successfully: {}", id);
+        log.info("❌ Quality control rejected successfully: {}", id);
+
+        // Publish inspection failed event
+        qualityEventPublisher.publishInspectionFailed(rejectedInspection);
+
+        // Auto-create quarantine for rejected items
+        try {
+            log.info("🚫 Auto-creating quarantine for rejected inspection: {}", id);
+
+            // Get quarantine location for the warehouse
+            UUID quarantineLocationId = null;
+            if (inspection.getInspectionLocationId() != null) {
+                com.stock.qualityservice.client.LocationServiceClient.LocationDTO quarantineLocation =
+                        locationServiceClient.getQuarantineLocation(UUID.fromString(inspection.getInspectionLocationId()));
+                if (quarantineLocation != null) {
+                    quarantineLocationId = quarantineLocation.getId();
+                }
+            }
+
+            // Create quarantine request
+            com.stock.qualityservice.dto.request.QuarantineRequest quarantineRequest =
+                    new com.stock.qualityservice.dto.request.QuarantineRequest();
+            quarantineRequest.setItemId(inspection.getItemId());
+            quarantineRequest.setLotId(inspection.getLotId());
+            quarantineRequest.setSerialNumber(inspection.getSerialNumber());
+            quarantineRequest.setQuantity(inspection.getQuantityInspected());
+            quarantineRequest.setLocationId(quarantineLocationId != null ? quarantineLocationId.toString() : null);
+            quarantineRequest.setReason("Failed quality inspection: " + reason);
+            quarantineRequest.setSeverity("HIGH");
+            quarantineRequest.setRelatedInspectionId(id);
+
+            com.stock.qualityservice.dto.response.QuarantineResponse quarantine =
+                    quarantineService.createQuarantine(quarantineRequest);
+
+            // Link quarantine to inspection
+            inspection.setQuarantineId(quarantine.getId());
+            qualityControlRepository.save(inspection);
+
+            log.info("✅ Quarantine created successfully: {}", quarantine.getQuarantineNumber());
+
+        } catch (Exception e) {
+            log.error("❌ Failed to create quarantine for rejected inspection: {}", e.getMessage());
+            // Don't fail the rejection if quarantine creation fails
+        }
 
         return mapToResponse(rejectedInspection);
     }

@@ -17,35 +17,37 @@ import {
   X,
   List,
   ClipboardCheck,
+  Bell,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  
+
   // Products Section
   { name: 'Items', href: '/products/items', icon: Boxes },
   { name: 'Item Variants', href: '/products/variants', icon: Layers },
   { name: 'Categories', href: '/products/categories', icon: Tag },
-  
+
   // Inventory Section
   { name: 'Lots', href: '/inventory/lots', icon: Box },
   { name: 'Serials', href: '/inventory/serials', icon: Barcode },
   { name: 'Inventory', href: '/inventory/Inventories', icon: Boxes },
-  
+
   // Locations Section
   { name: 'Sites', href: '/locations/sites', icon: Map },
   { name: 'Warehouses', href: '/locations/warehouses', icon: Building2 },
   { name: 'Locations', href: '/locations/locations', icon: MapPin },
-  
+
   // Movements Section
   { name: 'Movements', href: '/movements', icon: Move },
 
-  
-  // Quality
-    { name: 'Quality Controls', href: '/quality/controls', icon: CheckCircle },
-   
 
+  // Quality
+  { name: 'Quality Controls', href: '/quality/controls', icon: CheckCircle },
+
+  // Alerts
+  { name: 'Alerts', href: '/alerts', icon: Bell },
 ];
 
 export const Sidebar = () => {

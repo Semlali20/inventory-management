@@ -11,6 +11,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class InspectionResultRequest {
 
+    @NotBlank(message = "Quality control ID is required")
+    private String qualityControlId;
+
     @NotBlank(message = "Test parameter is required")
     private String testParameter;
 

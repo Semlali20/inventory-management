@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 public class QuarantineResponse {
 
     private String id;
+    private String quarantineNumber;
     private String itemId;
     private String lotId;
     private String serialNumber;
@@ -31,6 +32,7 @@ public class QuarantineResponse {
     private String severity;
     private String quarantineType;
     private String notes;
+    private String relatedInspectionId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String createdBy;

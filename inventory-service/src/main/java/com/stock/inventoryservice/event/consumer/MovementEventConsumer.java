@@ -78,11 +78,20 @@ public class MovementEventConsumer {
                          line.getActualQuantity() : line.getRequestedQuantity();
 
         switch (movementType) {
+            // Legacy types (for backward compatibility)
             case "INBOUND":
                 handleInbound(movement, line, quantity);
                 break;
             case "OUTBOUND":
                 handleOutbound(movement, line, quantity);
+                break;
+
+            // Standard movement types
+            case "RECEIPT":
+                handleReceipt(movement, line, quantity);
+                break;
+            case "ISSUE":
+                handleIssue(movement, line, quantity);
                 break;
             case "TRANSFER":
                 handleTransfer(movement, line, quantity);
@@ -90,8 +99,27 @@ public class MovementEventConsumer {
             case "ADJUSTMENT":
                 handleAdjustment(movement, line, quantity);
                 break;
+            case "PICKING":
+                handlePicking(movement, line, quantity);
+                break;
+            case "PUTAWAY":
+                handlePutaway(movement, line, quantity);
+                break;
+            case "RETURN":
+                handleReturn(movement, line, quantity);
+                break;
+            case "CYCLE_COUNT":
+                handleCycleCount(movement, line, quantity);
+                break;
+            case "QUARANTINE":
+                handleQuarantine(movement, line, quantity);
+                break;
+            case "RELOCATION":
+                handleRelocation(movement, line, quantity);
+                break;
             default:
-                log.warn("Unknown movement type: {}", movementType);
+                log.error("❌ Unsupported movement type: {}. Inventory will NOT be updated!", movementType);
+                throw new IllegalArgumentException("Unsupported movement type: " + movementType);
         }
     }
 
@@ -248,7 +276,7 @@ public class MovementEventConsumer {
      * 📢 Publish inventory update event
      */
     private void publishInventoryUpdate(Inventory inventory, String reason, Double delta) {
-        com.stock.inventoryservice.event.dto.InventoryEvent event = 
+        com.stock.inventoryservice.event.dto.InventoryEvent event =
             com.stock.inventoryservice.event.dto.InventoryEvent.builder()
                 .inventoryId(inventory.getId())
                 .itemId(inventory.getItemId())
@@ -263,5 +291,271 @@ public class MovementEventConsumer {
                 .build();
 
         eventPublisher.publishInventoryEvent(event);
+    }
+
+    // ========================================
+    // NEW MOVEMENT TYPE HANDLERS
+    // ========================================
+
+    /**
+     * 📥 RECEIPT: Receiving goods into warehouse (same as INBOUND)
+     * Increases inventory at destination location
+     */
+    private void handleReceipt(MovementCompletedEvent movement,
+                               MovementCompletedEvent.MovementLineDTO line,
+                               Double quantity) {
+        log.info("📥 RECEIPT: Adding {} units of item {} to location {}",
+                quantity, line.getItemId(), movement.getDestinationLocationId());
+
+        String itemId = line.getItemId().toString();
+        String locationId = movement.getDestinationLocationId().toString();
+        String warehouseId = movement.getWarehouseId().toString();
+
+        Inventory inventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, locationId)
+                .orElseGet(() -> createNewInventory(itemId, warehouseId, locationId, line));
+
+        inventory.setQuantityOnHand(inventory.getQuantityOnHand() + quantity);
+        inventory.setLastCountDate(LocalDate.now());
+
+        Inventory saved = inventoryRepository.save(inventory);
+        log.info("✅ RECEIPT complete: {} units now at location {}",
+                saved.getQuantityOnHand(), locationId);
+
+        publishInventoryUpdate(saved, "RECEIPT", quantity);
+    }
+
+    /**
+     * 📤 ISSUE: Issuing goods out of warehouse (same as OUTBOUND)
+     * Decreases inventory at source location
+     */
+    private void handleIssue(MovementCompletedEvent movement,
+                             MovementCompletedEvent.MovementLineDTO line,
+                             Double quantity) {
+        log.info("📤 ISSUE: Removing {} units of item {} from location {}",
+                quantity, line.getItemId(), movement.getSourceLocationId());
+
+        String itemId = line.getItemId().toString();
+        String locationId = movement.getSourceLocationId().toString();
+
+        Inventory inventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, locationId)
+                .orElseThrow(() -> new RuntimeException("Inventory not found for ISSUE movement"));
+
+        inventory.setQuantityOnHand(inventory.getQuantityOnHand() - quantity);
+        inventory.setQuantityReserved(Math.max(0, inventory.getQuantityReserved() - quantity));
+        inventory.setLastCountDate(LocalDate.now());
+
+        Inventory saved = inventoryRepository.save(inventory);
+        log.info("✅ ISSUE complete: {} units remain at location {}",
+                saved.getQuantityOnHand(), locationId);
+
+        publishInventoryUpdate(saved, "ISSUE", -quantity);
+    }
+
+    /**
+     * 📦 PICKING: Pick items for orders
+     * Moves inventory from storage to staging and marks as reserved
+     */
+    private void handlePicking(MovementCompletedEvent movement,
+                               MovementCompletedEvent.MovementLineDTO line,
+                               Double quantity) {
+        log.info("📦 PICKING: Moving {} units from {} to staging {}",
+                quantity, movement.getSourceLocationId(), movement.getDestinationLocationId());
+
+        String itemId = line.getItemId().toString();
+        String sourceLocationId = movement.getSourceLocationId().toString();
+        String destLocationId = movement.getDestinationLocationId().toString();
+        String warehouseId = movement.getWarehouseId().toString();
+
+        // Decrease from source (storage location)
+        Inventory sourceInventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, sourceLocationId)
+                .orElseThrow(() -> new RuntimeException("Source inventory not found for PICKING"));
+
+        sourceInventory.setQuantityOnHand(sourceInventory.getQuantityOnHand() - quantity);
+        inventoryRepository.save(sourceInventory);
+        log.info("✅ Decreased source (storage): {} units remain", sourceInventory.getQuantityOnHand());
+
+        // Increase at destination (staging/packing area) and mark as reserved
+        Inventory destInventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, destLocationId)
+                .orElseGet(() -> createNewInventory(itemId, warehouseId, destLocationId, line));
+
+        destInventory.setQuantityOnHand(destInventory.getQuantityOnHand() + quantity);
+        destInventory.setQuantityReserved(destInventory.getQuantityReserved() + quantity); // Mark as reserved for order
+        Inventory savedDest = inventoryRepository.save(destInventory);
+        log.info("✅ Increased destination (staging): {} units, {} reserved",
+                savedDest.getQuantityOnHand(), savedDest.getQuantityReserved());
+
+        publishInventoryUpdate(savedDest, "PICKING", quantity);
+    }
+
+    /**
+     * 🏪 PUTAWAY: Store received goods in final locations
+     * Moves inventory from receiving to storage
+     */
+    private void handlePutaway(MovementCompletedEvent movement,
+                               MovementCompletedEvent.MovementLineDTO line,
+                               Double quantity) {
+        log.info("🏪 PUTAWAY: Moving {} units from {} to storage {}",
+                quantity, movement.getSourceLocationId(), movement.getDestinationLocationId());
+
+        String itemId = line.getItemId().toString();
+        String sourceLocationId = movement.getSourceLocationId().toString();
+        String destLocationId = movement.getDestinationLocationId().toString();
+        String warehouseId = movement.getWarehouseId().toString();
+
+        // Decrease from receiving/staging area
+        Inventory sourceInventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, sourceLocationId)
+                .orElseThrow(() -> new RuntimeException("Source inventory not found for PUTAWAY"));
+
+        sourceInventory.setQuantityOnHand(sourceInventory.getQuantityOnHand() - quantity);
+        inventoryRepository.save(sourceInventory);
+        log.info("✅ Decreased source (receiving): {} units remain", sourceInventory.getQuantityOnHand());
+
+        // Increase at final storage location
+        Inventory destInventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, destLocationId)
+                .orElseGet(() -> createNewInventory(itemId, warehouseId, destLocationId, line));
+
+        destInventory.setQuantityOnHand(destInventory.getQuantityOnHand() + quantity);
+        Inventory savedDest = inventoryRepository.save(destInventory);
+        log.info("✅ Increased destination (storage): {} units now available", savedDest.getQuantityOnHand());
+
+        publishInventoryUpdate(savedDest, "PUTAWAY", quantity);
+    }
+
+    /**
+     * ↩️ RETURN: Customer/supplier returns
+     * Adds inventory back (same as RECEIPT)
+     */
+    private void handleReturn(MovementCompletedEvent movement,
+                              MovementCompletedEvent.MovementLineDTO line,
+                              Double quantity) {
+        log.info("↩️ RETURN: Adding {} units back to location {}",
+                quantity, movement.getDestinationLocationId());
+
+        String itemId = line.getItemId().toString();
+        String locationId = movement.getDestinationLocationId().toString();
+        String warehouseId = movement.getWarehouseId().toString();
+
+        Inventory inventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, locationId)
+                .orElseGet(() -> createNewInventory(itemId, warehouseId, locationId, line));
+
+        inventory.setQuantityOnHand(inventory.getQuantityOnHand() + quantity);
+        inventory.setLastCountDate(LocalDate.now());
+
+        Inventory saved = inventoryRepository.save(inventory);
+        log.info("✅ RETURN complete: {} units now at location {}",
+                saved.getQuantityOnHand(), locationId);
+
+        publishInventoryUpdate(saved, "RETURN", quantity);
+    }
+
+    /**
+     * 🔢 CYCLE_COUNT: Physical inventory count
+     * Adjusts inventory to match actual count (same as ADJUSTMENT)
+     */
+    private void handleCycleCount(MovementCompletedEvent movement,
+                                  MovementCompletedEvent.MovementLineDTO line,
+                                  Double quantity) {
+        log.info("🔢 CYCLE_COUNT: Adjusting item {} to {} units based on count",
+                line.getItemId(), quantity);
+
+        String itemId = line.getItemId().toString();
+        String locationId = line.getToLocationId() != null ?
+                           line.getToLocationId().toString() :
+                           movement.getDestinationLocationId().toString();
+
+        Inventory inventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, locationId)
+                .orElseThrow(() -> new RuntimeException("Inventory not found for CYCLE_COUNT"));
+
+        Double oldQuantity = inventory.getQuantityOnHand();
+        inventory.setQuantityOnHand(quantity); // Set to actual counted quantity
+        inventory.setLastCountDate(LocalDate.now());
+
+        Inventory saved = inventoryRepository.save(inventory);
+        log.info("✅ CYCLE_COUNT complete: {} → {} units (variance: {})",
+                oldQuantity, quantity, quantity - oldQuantity);
+
+        publishInventoryUpdate(saved, "CYCLE_COUNT", quantity - oldQuantity);
+    }
+
+    /**
+     * 🚫 QUARANTINE: Move items to quarantine
+     * Moves inventory and marks as damaged/quarantined
+     */
+    private void handleQuarantine(MovementCompletedEvent movement,
+                                  MovementCompletedEvent.MovementLineDTO line,
+                                  Double quantity) {
+        log.info("🚫 QUARANTINE: Moving {} units from {} to quarantine {}",
+                quantity, movement.getSourceLocationId(), movement.getDestinationLocationId());
+
+        String itemId = line.getItemId().toString();
+        String sourceLocationId = movement.getSourceLocationId().toString();
+        String destLocationId = movement.getDestinationLocationId().toString();
+        String warehouseId = movement.getWarehouseId().toString();
+
+        // Decrease from source
+        Inventory sourceInventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, sourceLocationId)
+                .orElseThrow(() -> new RuntimeException("Source inventory not found for QUARANTINE"));
+
+        sourceInventory.setQuantityOnHand(sourceInventory.getQuantityOnHand() - quantity);
+        inventoryRepository.save(sourceInventory);
+        log.info("✅ Decreased source: {} units remain", sourceInventory.getQuantityOnHand());
+
+        // Increase at quarantine location and mark as damaged
+        Inventory destInventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, destLocationId)
+                .orElseGet(() -> createNewInventory(itemId, warehouseId, destLocationId, line));
+
+        destInventory.setQuantityOnHand(destInventory.getQuantityOnHand() + quantity);
+        destInventory.setQuantityDamaged(destInventory.getQuantityDamaged() + quantity); // Mark as damaged/quarantined
+        destInventory.setStatus(InventoryStatus.DAMAGED); // Set status to damaged
+        Inventory savedDest = inventoryRepository.save(destInventory);
+        log.info("✅ Moved to quarantine: {} units quarantined", savedDest.getQuantityDamaged());
+
+        publishInventoryUpdate(savedDest, "QUARANTINE", quantity);
+    }
+
+    /**
+     * 📍 RELOCATION: Warehouse reorganization
+     * Moves inventory to new optimized location (same as TRANSFER)
+     */
+    private void handleRelocation(MovementCompletedEvent movement,
+                                  MovementCompletedEvent.MovementLineDTO line,
+                                  Double quantity) {
+        log.info("📍 RELOCATION: Moving {} units from {} to new location {}",
+                quantity, movement.getSourceLocationId(), movement.getDestinationLocationId());
+
+        String itemId = line.getItemId().toString();
+        String sourceLocationId = movement.getSourceLocationId().toString();
+        String destLocationId = movement.getDestinationLocationId().toString();
+        String warehouseId = movement.getWarehouseId().toString();
+
+        // Decrease from old location
+        Inventory sourceInventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, sourceLocationId)
+                .orElseThrow(() -> new RuntimeException("Source inventory not found for RELOCATION"));
+
+        sourceInventory.setQuantityOnHand(sourceInventory.getQuantityOnHand() - quantity);
+        inventoryRepository.save(sourceInventory);
+        log.info("✅ Decreased old location: {} units remain", sourceInventory.getQuantityOnHand());
+
+        // Increase at new location
+        Inventory destInventory = inventoryRepository
+                .findByItemIdAndLocationId(itemId, destLocationId)
+                .orElseGet(() -> createNewInventory(itemId, warehouseId, destLocationId, line));
+
+        destInventory.setQuantityOnHand(destInventory.getQuantityOnHand() + quantity);
+        Inventory savedDest = inventoryRepository.save(destInventory);
+        log.info("✅ Increased new location: {} units now available", savedDest.getQuantityOnHand());
+
+        publishInventoryUpdate(savedDest, "RELOCATION", quantity);
     }
 }

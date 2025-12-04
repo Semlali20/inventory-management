@@ -31,10 +31,11 @@ import java.util.stream.Collectors;
 public class QuarantineServiceImpl implements QuarantineService {
 
     private final QuarantineRepository quarantineRepository;
+    private final com.stock.qualityservice.event.QualityEventPublisher qualityEventPublisher;
 
     @Override
     public QuarantineResponse createQuarantine(QuarantineRequest request) {
-        log.info("Creating quarantine for item ID: {}", request.getItemId());
+        log.info("🚫 Creating quarantine for item ID: {}", request.getItemId());
 
         // Check for duplicate active quarantine
         List<QuarantineStatus> activeStatuses = Arrays.asList(QuarantineStatus.IN_PROCESS, QuarantineStatus.QUARANTINED);
@@ -46,7 +47,11 @@ public class QuarantineServiceImpl implements QuarantineService {
         Quarantine quarantine = mapToEntity(request);
         Quarantine savedQuarantine = quarantineRepository.save(quarantine);
 
-        log.info("Quarantine created successfully with ID: {}", savedQuarantine.getId());
+        log.info("✅ Quarantine created successfully with ID: {}", savedQuarantine.getId());
+
+        // Publish quarantine created event
+        qualityEventPublisher.publishQuarantineCreated(savedQuarantine);
+
         return mapToResponse(savedQuarantine);
     }
 
@@ -172,12 +177,18 @@ public class QuarantineServiceImpl implements QuarantineService {
 
     @Override
     public QuarantineResponse releaseQuarantine(String id, String releaseNotes) {
-        log.info("Releasing quarantine ID: {}", id);
+        log.info("↩️ Releasing quarantine ID: {}", id);
 
         Quarantine quarantine = quarantineRepository.findById(id)
                 .orElseThrow(() -> new QuarantineNotFoundException(id));
 
         if (quarantine.getStatus() == QuarantineStatus.RELEASED) {
+            log.warn("⚠️ Quarantine already released: {}", id);
+            return mapToResponse(quarantine);
+        }
+
+        if (quarantine.getStatus() != QuarantineStatus.IN_PROCESS &&
+            quarantine.getStatus() != QuarantineStatus.QUARANTINED) {
             throw new InvalidQuarantineStateException(id, quarantine.getStatus(), "release");
         }
 
@@ -187,9 +198,43 @@ public class QuarantineServiceImpl implements QuarantineService {
         quarantine.setActualReleaseDate(LocalDateTime.now());
 
         Quarantine releasedQuarantine = quarantineRepository.save(quarantine);
-        log.info("Quarantine released successfully: {}", id);
+        log.info("✅ Quarantine released successfully: {}", id);
+
+        // Publish quarantine released event
+        qualityEventPublisher.publishQuarantineReleased(releasedQuarantine);
 
         return mapToResponse(releasedQuarantine);
+    }
+
+    @Override
+    public QuarantineResponse rejectQuarantine(String id, String reason) {
+        log.info("🗑️ Rejecting quarantine ID: {} (Scrap/Dispose)", id);
+
+        Quarantine quarantine = quarantineRepository.findById(id)
+                .orElseThrow(() -> new QuarantineNotFoundException(id));
+
+        if (quarantine.getStatus() == QuarantineStatus.REJECTED) {
+            log.warn("⚠️ Quarantine already rejected: {}", id);
+            return mapToResponse(quarantine);
+        }
+
+        if (quarantine.getStatus() != QuarantineStatus.IN_PROCESS &&
+            quarantine.getStatus() != QuarantineStatus.QUARANTINED) {
+            throw new InvalidQuarantineStateException(id, quarantine.getStatus(), "reject");
+        }
+
+        quarantine.setStatus(QuarantineStatus.REJECTED);
+        quarantine.setDisposition(Disposition.REJECT);
+        quarantine.setReleaseNotes(reason);
+        quarantine.setActualReleaseDate(LocalDateTime.now());
+
+        Quarantine rejectedQuarantine = quarantineRepository.save(quarantine);
+        log.info("✅ Quarantine rejected successfully (marked for scrap/disposal): {}", id);
+
+        // Publish quarantine rejected event
+        qualityEventPublisher.publishQuarantineRejected(rejectedQuarantine);
+
+        return mapToResponse(rejectedQuarantine);
     }
 
     @Override
@@ -245,6 +290,7 @@ public class QuarantineServiceImpl implements QuarantineService {
     // Helper methods
     private Quarantine mapToEntity(QuarantineRequest request) {
         Quarantine quarantine = new Quarantine();
+        quarantine.setQuarantineNumber(generateQuarantineNumber());
         quarantine.setItemId(request.getItemId());
         quarantine.setLotId(request.getLotId());
         quarantine.setSerialNumber(request.getSerialNumber());
@@ -258,12 +304,18 @@ public class QuarantineServiceImpl implements QuarantineService {
         quarantine.setSeverity(request.getSeverity());
         quarantine.setQuarantineType(request.getQuarantineType());
         quarantine.setNotes(request.getNotes());
+        quarantine.setRelatedInspectionId(request.getRelatedInspectionId());
         return quarantine;
+    }
+
+    private String generateQuarantineNumber() {
+        return "QTN-" + System.currentTimeMillis();
     }
 
     private QuarantineResponse mapToResponse(Quarantine quarantine) {
         QuarantineResponse response = new QuarantineResponse();
         response.setId(quarantine.getId());
+        response.setQuarantineNumber(quarantine.getQuarantineNumber());
         response.setItemId(quarantine.getItemId());
         response.setLotId(quarantine.getLotId());
         response.setSerialNumber(quarantine.getSerialNumber());
@@ -281,6 +333,7 @@ public class QuarantineServiceImpl implements QuarantineService {
         response.setSeverity(quarantine.getSeverity());
         response.setQuarantineType(quarantine.getQuarantineType());
         response.setNotes(quarantine.getNotes());
+        response.setRelatedInspectionId(quarantine.getRelatedInspectionId());
         response.setCreatedAt(quarantine.getCreatedAt());
         response.setUpdatedAt(quarantine.getUpdatedAt());
         response.setCreatedBy(quarantine.getCreatedBy());

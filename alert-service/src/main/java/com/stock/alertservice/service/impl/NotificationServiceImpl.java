@@ -17,8 +17,11 @@ import com.stock.alertservice.repository.AlertRepository;
 import com.stock.alertservice.repository.NotificationChannelRepository;
 import com.stock.alertservice.repository.NotificationRepository;
 import com.stock.alertservice.repository.NotificationTemplateRepository;
+import com.stock.alertservice.service.EmailSenderService;
 import com.stock.alertservice.service.NotificationService;
 import com.stock.alertservice.service.NotificationTemplateService;
+import com.stock.alertservice.service.SmsSenderService;
+import com.stock.alertservice.service.WebhookSenderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -45,6 +48,9 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationTemplateRepository templateRepository;
     private final AlertRepository alertRepository;
     private final NotificationTemplateService templateService;
+    private final EmailSenderService emailSenderService;
+    private final SmsSenderService smsSenderService;
+    private final WebhookSenderService webhookSenderService;
 
     @Override
     public void sendNotificationForAlert(String alertId) {
@@ -471,24 +477,97 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     /**
-     * Envoyer effectivement la notification (simulation)
+     * Envoyer effectivement la notification
      */
     private void sendActualNotification(Notification notification) {
-        // Ici on intégrerait avec un vrai service d'envoi:
-        // - SendGrid pour EMAIL
-        // - Twilio pour SMS
-        // - Slack API pour SLACK
-        // - etc.
-
-        log.info("Simulating {} notification send to: {}",
+        log.info("Sending {} notification to: {}",
                 notification.getChannelType(), notification.getRecipient());
 
-        // Simulation d'envoi
-        try {
-            Thread.sleep(100); // Simuler un délai réseau
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        switch (notification.getChannelType()) {
+            case EMAIL:
+                sendEmailNotification(notification);
+                break;
+            case SMS:
+                sendSmsNotification(notification);
+                break;
+            case WEBHOOK:
+                sendWebhookNotification(notification);
+                break;
+            case PUSH:
+            case BLACK:
+                // Keep as no-op - PUSH not yet implemented, BLACK is disabled
+                log.info("Channel {} - no-op (not implemented or disabled)",
+                        notification.getChannelType());
+                break;
+            default:
+                log.warn("Unknown channel type: {}", notification.getChannelType());
         }
+    }
+
+    /**
+     * Send email notification using EmailSenderService
+     */
+    private void sendEmailNotification(Notification notification) {
+        String recipient = notification.getRecipient();
+        String subject = notification.getSubject();
+        String body = notification.getBody();
+
+        // Check if body contains HTML tags
+        boolean isHtml = body != null && (
+                body.contains("<html>") ||
+                body.contains("<div>") ||
+                body.contains("<p>") ||
+                body.contains("<br>") ||
+                body.contains("<table>") ||
+                body.contains("<!DOCTYPE")
+        );
+
+        if (isHtml) {
+            emailSenderService.sendHtmlEmail(recipient, subject, body);
+            log.info("HTML email sent to: {}", recipient);
+        } else {
+            emailSenderService.sendEmail(recipient, subject, body);
+            log.info("Plain text email sent to: {}", recipient);
+        }
+    }
+
+    /**
+     * Send SMS notification using SmsSenderService
+     */
+    private void sendSmsNotification(Notification notification) {
+        String recipient = notification.getRecipient();
+        String message = notification.getBody();
+
+        smsSenderService.sendSms(recipient, message);
+        log.info("SMS sent to: {}", recipient);
+    }
+
+    /**
+     * Send webhook notification using WebhookSenderService
+     */
+    private void sendWebhookNotification(Notification notification) {
+        String url = notification.getRecipient(); // For webhooks, recipient is the URL
+
+        // Prepare payload
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("subject", notification.getSubject());
+        payload.put("body", notification.getBody());
+        payload.put("channelType", notification.getChannelType().toString());
+        payload.put("status", notification.getStatus().toString());
+        payload.put("createdAt", notification.getCreatedAt().toString());
+
+        if (notification.getAlert() != null) {
+            payload.put("alertId", notification.getAlert().getId());
+            payload.put("alertType", notification.getAlert().getType().toString());
+            payload.put("alertLevel", notification.getAlert().getLevel().toString());
+        }
+
+        if (notification.getMetadata() != null) {
+            payload.put("metadata", notification.getMetadata());
+        }
+
+        webhookSenderService.sendWebhook(url, payload);
+        log.info("Webhook sent to: {}", url);
     }
 
     /**

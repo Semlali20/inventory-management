@@ -64,6 +64,11 @@ public interface AlertRepository extends JpaRepository<Alert, String> {
     List<Alert> findByAcknowledgedFalse();
 
     /**
+     * Trouver les alertes non acquittées avec pagination
+     */
+    Page<Alert> findByAcknowledgedFalse(Pageable pageable);
+
+    /**
      * Trouver les alertes non résolues
      */
     List<Alert> findByResolvedFalse();

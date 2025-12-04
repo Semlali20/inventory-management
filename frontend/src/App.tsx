@@ -42,6 +42,9 @@ import { QualityControlsPage } from '@/pages/quality/QualityControlPage';
 import { QualityAttachmentsPage } from './pages/quality/QualityAttachmentsPage';
 import { QuarantinesPage } from './pages/quality/QuarantinesPage';
 
+// Alerts Pages
+import { AlertsPage } from '@/pages/Alerts/AlertsPage';
+
 // Protected Route Component - FIXED VERSION
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   // FIX: Check for 'access_token' instead of 'token'
@@ -276,6 +279,18 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <QuarantinesPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Alerts Routes */}
+        <Route
+          path="/alerts"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <AlertsPage />
               </MainLayout>
             </ProtectedRoute>
           }

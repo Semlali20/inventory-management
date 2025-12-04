@@ -55,8 +55,20 @@ public class QualityControl {
     @Column(name = "inspector_id", nullable = false)
     private String inspectorId;
 
+    @Column(name = "inspected_by")
+    private String inspectedBy;
+
     @Column(name = "inspection_location_id")
     private String inspectionLocationId;
+
+    @Column(name = "location_id")
+    private String locationId;
+
+    @Column(name = "warehouse_id")
+    private String warehouseId;
+
+    @Column(name = "related_movement_id")
+    private String relatedMovementId;
 
     @Column(name = "scheduled_date")
     private LocalDateTime scheduledDate;
@@ -80,11 +92,17 @@ public class QualityControl {
     @Column(name = "defect_count")
     private Integer defectCount;
 
+    @Column(name = "defect_type")
+    private String defectType;
+
     @Column(name = "defect_rate")
     private Double defectRate;
 
     @Column(name = "inspector_notes", columnDefinition = "TEXT")
     private String inspectorNotes;
+
+    @Column(name = "notes", columnDefinition = "TEXT")
+    private String notes;
 
     @Column(name = "corrective_action", columnDefinition = "TEXT")
     private String correctiveAction;

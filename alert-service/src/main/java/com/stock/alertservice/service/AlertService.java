@@ -47,6 +47,11 @@ public interface AlertService {
     PageResponse<AlertResponse> getActiveAlerts(int page, int size);
 
     /**
+     * Récupérer les alertes non acquittées
+     */
+    PageResponse<AlertResponse> getUnacknowledgedAlerts(int page, int size);
+
+    /**
      * Récupérer les alertes par statut
      */
     PageResponse<AlertResponse> getAlertsByStatus(AlertStatus status, int page, int size);

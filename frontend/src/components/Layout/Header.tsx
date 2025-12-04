@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ROUTES } from '@/config/constants';
 import toast from 'react-hot-toast';
+import { NotificationDropdown, useUnreadAlertCount } from '@/components/NotificationDropdown';
 
 interface HeaderProps {
   onMenuClick?: () => void;
@@ -40,6 +41,9 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
   });
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Get unread alert count from the custom hook
+  const unreadCount = useUnreadAlertCount();
+
   // Apply dark mode class to document element
   useEffect(() => {
     if (isDark) {
@@ -50,15 +54,6 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
       localStorage.setItem('theme', 'light');
     }
   }, [isDark]);
-
-  // Mock notifications
-  const notifications = [
-    { id: 1, title: 'Low Stock Alert', message: 'Item A is running low', time: '5m ago', unread: true },
-    { id: 2, title: 'New Order', message: 'Order #1234 received', time: '1h ago', unread: true },
-    { id: 3, title: 'System Update', message: 'System updated successfully', time: '2h ago', unread: false },
-  ];
-
-  const unreadCount = notifications.filter(n => n.unread).length;
 
   const handleLogout = async () => {
     try {
@@ -188,60 +183,16 @@ export const Header = ({ onMenuClick }: HeaderProps) => {
                   animate={{ scale: 1 }}
                   className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center"
                 >
-                  {unreadCount}
+                  {unreadCount > 99 ? '99+' : unreadCount}
                 </motion.span>
               )}
             </motion.button>
 
-            {/* Notifications Dropdown */}
-            <AnimatePresence>
-              {showNotifications && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute right-0 mt-2 w-80 bg-white dark:bg-neutral-800 rounded-2xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-                >
-                  <div className="p-4 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between">
-                    <h3 className="font-semibold text-neutral-800 dark:text-neutral-100">
-                      Notifications
-                    </h3>
-                    <span className="text-xs px-2 py-1 bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-300 rounded-full">
-                      {unreadCount} new
-                    </span>
-                  </div>
-                  <div className="max-h-96 overflow-y-auto">
-                    {notifications.map((notification) => (
-                      <motion.div
-                        key={notification.id}
-                        whileHover={{ backgroundColor: 'rgba(0,0,0,0.02)' }}
-                        className="p-4 border-b border-neutral-100 dark:border-neutral-700 cursor-pointer"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`w-2 h-2 rounded-full mt-2 ${notification.unread ? 'bg-blue-500' : 'bg-neutral-300'}`} />
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
-                              {notification.title}
-                            </p>
-                            <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
-                              {notification.message}
-                            </p>
-                            <p className="text-xs text-neutral-400 mt-2">
-                              {notification.time}
-                            </p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                  <div className="p-3 text-center">
-                    <button className="text-sm text-primary-600 dark:text-primary-400 font-semibold hover:underline">
-                      View all notifications
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* Notifications Dropdown - Using our new component */}
+            <NotificationDropdown
+              isOpen={showNotifications}
+              onClose={() => setShowNotifications(false)}
+            />
           </div>
 
           {/* User Menu */}

@@ -1,6 +1,7 @@
 package com.stock.qualityservice.repository;
 
 import com.stock.qualityservice.entity.InspectionResult;
+import com.stock.qualityservice.entity.QualityControl;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,6 +13,12 @@ import java.util.List;
 public interface InspectionResultRepository extends JpaRepository<InspectionResult, String> {
 
     List<InspectionResult> findByQualityControlId(String qualityControlId);
+
+    List<InspectionResult> findByQualityControl(QualityControl qualityControl);
+
+    List<InspectionResult> findByQualityControlAndIsPassedFalse(QualityControl qualityControl);
+
+    void deleteByQualityControl(QualityControl qualityControl);
 
     @Query("SELECT ir FROM InspectionResult ir WHERE ir.qualityControl.id = :qualityControlId ORDER BY ir.sequenceOrder ASC")
     List<InspectionResult> findByQualityControlIdOrderBySequence(@Param("qualityControlId") String qualityControlId);

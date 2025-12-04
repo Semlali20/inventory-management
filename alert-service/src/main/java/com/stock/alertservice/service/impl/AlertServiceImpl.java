@@ -153,6 +153,21 @@ public class AlertServiceImpl implements AlertService {
 
     @Override
     @Transactional(readOnly = true)
+    public PageResponse<AlertResponse> getUnacknowledgedAlerts(int page, int size) {
+        log.info("Fetching unacknowledged alerts - page: {}, size: {}", page, size);
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Page<Alert> alertPage = alertRepository.findByAcknowledgedFalse(pageable);
+
+        List<AlertResponse> content = alertPage.getContent().stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+
+        return PageResponse.of(content, page, size, alertPage.getTotalElements());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public PageResponse<AlertResponse> getAlertsByStatus(AlertStatus status, int page, int size) {
         log.info("Fetching alerts by status: {} - page: {}, size: {}", status, page, size);
 
