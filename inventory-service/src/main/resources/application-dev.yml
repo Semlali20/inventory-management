@@ -33,6 +33,8 @@ spring:
 services:
   location-service:
     url: http://localhost:8085
+  alert-service:
+    url: http://localhost:8088
 
 logging:
   level:

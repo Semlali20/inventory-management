@@ -1,5 +1,6 @@
 package com.stock.inventoryservice.service.impl;
 
+import com.stock.inventoryservice.client.AlertClient;
 import com.stock.inventoryservice.client.LocationClient;
 import com.stock.inventoryservice.dto.*;
 import com.stock.inventoryservice.dto.cache.ItemCacheDTO;
@@ -36,7 +37,8 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryRepository inventoryRepository;
     private final ItemCacheService itemCacheService;
     private final InventoryEventPublisher eventPublisher;
-    private final LocationClient locationClient; // 🔥 NEW: Inject LocationClient
+    private final LocationClient locationClient;
+    private final AlertClient alertClient; // 🔥 NEW: Inject AlertClient
 
     @Override
     public InventoryDTO createInventory(InventoryCreateRequest request) {
@@ -442,20 +444,75 @@ public class InventoryServiceImpl implements InventoryService {
                 .sum();
 
         Double newTotalQuantity = currentTotalQuantity + additionalQuantity;
+        Double percentageFull = (newTotalQuantity / locationCapacity) * 100;
 
-        log.debug("Location {}: Capacity={}, Current={}, Additional={}, New Total={}", 
-                locationId, locationCapacity, currentTotalQuantity, additionalQuantity, newTotalQuantity);
+        log.debug("Location {}: Capacity={}, Current={}, Additional={}, New Total={}, Percentage={}%",
+                locationId, locationCapacity, currentTotalQuantity, additionalQuantity, newTotalQuantity,
+                String.format("%.1f", percentageFull));
 
-        // Check if new total exceeds capacity
+        // 🚨 CREATE ALERTS BASED ON CAPACITY USAGE
+
+        // CRITICAL ALERT: Capacity would exceed 100%
         if (newTotalQuantity > locationCapacity) {
-            throw new LocationCapacityExceededException(
-                    String.format("Location capacity exceeded! Location: %s [%s], Capacity: %.2f, Current: %.2f, " +
-                            "Attempting to add: %.2f, Would result in: %.2f",
-                            location.getCode(), locationId, locationCapacity, currentTotalQuantity, 
-                            additionalQuantity, newTotalQuantity));
+            String message = String.format(
+                    "Location %s capacity EXCEEDED! Capacity: %.2f, Current: %.2f, Attempting to add: %.2f, Would be: %.2f (%.1f%%)",
+                    location.getCode(), locationCapacity, currentTotalQuantity,
+                    additionalQuantity, newTotalQuantity, percentageFull);
+
+            // Create CRITICAL alert
+            alertClient.createLocationCapacityAlert(
+                    "CRITICAL",
+                    locationId,
+                    location.getCode(),
+                    message,
+                    newTotalQuantity,
+                    locationCapacity,
+                    percentageFull
+            );
+
+            throw new LocationCapacityExceededException(message);
         }
 
-        log.info("✅ Location capacity validation passed for location: {}", locationId);
+        // CRITICAL ALERT: 95-100% full
+        else if (percentageFull >= 95.0) {
+            String message = String.format(
+                    "Location %s is CRITICALLY FULL at %.1f%% capacity (%.2f / %.2f units)",
+                    location.getCode(), percentageFull, newTotalQuantity, locationCapacity);
+
+            alertClient.createLocationCapacityAlert(
+                    "CRITICAL",
+                    locationId,
+                    location.getCode(),
+                    message,
+                    newTotalQuantity,
+                    locationCapacity,
+                    percentageFull
+            );
+
+            log.warn("🚨 CRITICAL: {}", message);
+        }
+
+        // WARNING ALERT: 80-95% full
+        else if (percentageFull >= 80.0) {
+            String message = String.format(
+                    "Location %s is %.1f%% full (%.2f / %.2f units) - approaching capacity limit",
+                    location.getCode(), percentageFull, newTotalQuantity, locationCapacity);
+
+            alertClient.createLocationCapacityAlert(
+                    "WARNING",
+                    locationId,
+                    location.getCode(),
+                    message,
+                    newTotalQuantity,
+                    locationCapacity,
+                    percentageFull
+            );
+
+            log.warn("⚠️ WARNING: {}", message);
+        }
+
+        log.info("✅ Location capacity validation passed for location: {} ({}% full)",
+                locationId, String.format("%.1f", percentageFull));
     }
 
     private void publishInventoryEvent(Inventory inventory, String eventType) {

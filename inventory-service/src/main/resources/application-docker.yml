@@ -63,6 +63,8 @@ spring:
 services:
   location-service:
     url: http://location-service:8085
+  alert-service:
+    url: http://alert-service:8088
 
 server:
   port: 8086

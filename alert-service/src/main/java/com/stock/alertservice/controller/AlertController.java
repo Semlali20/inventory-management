@@ -21,6 +21,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 /**
  * Controller pour la gestion des alertes
  */
@@ -32,6 +34,37 @@ import org.springframework.web.bind.annotation.*;
 public class AlertController {
 
     private final AlertService alertService;
+
+    // ==================== CREATE ====================
+
+    @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'ALERT_MANAGER', 'SYSTEM')")
+    @Operation(summary = "Créer une alerte", description = "Crée une nouvelle alerte dans le système")
+    public ResponseEntity<ApiResponse<AlertResponse>> createAlert(
+            @Parameter(description = "Type d'alerte") @RequestParam AlertType type,
+            @Parameter(description = "Niveau d'alerte") @RequestParam AlertLevel level,
+            @Parameter(description = "Type d'entité") @RequestParam String entityType,
+            @Parameter(description = "ID de l'entité") @RequestParam String entityId,
+            @Parameter(description = "Message de l'alerte") @RequestParam String message,
+            @Parameter(description = "Données supplémentaires (JSON)") @RequestParam(required = false) String data) {
+
+        log.info("REST request to create alert - type: {}, level: {}, entity: {}/{}",
+                type, level, entityType, entityId);
+
+        Map<String, Object> dataMap = null;
+        if (data != null && !data.isEmpty()) {
+            try {
+                dataMap = new java.util.HashMap<>();
+                dataMap.put("rawData", data);
+            } catch (Exception e) {
+                log.warn("Failed to parse data parameter: {}", data);
+            }
+        }
+
+        AlertResponse response = alertService.createAlert(type, level, entityType, entityId, message, dataMap, null);
+
+        return ResponseEntity.ok(ApiResponse.success("Alert created successfully", response));
+    }
 
     // ==================== READ ====================
 
