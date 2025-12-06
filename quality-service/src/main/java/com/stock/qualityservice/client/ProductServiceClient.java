@@ -19,7 +19,7 @@ public class ProductServiceClient {
 
     private final RestTemplate restTemplate;
 
-    @Value("${services.product.url:http://localhost:8081}")
+    @Value("${services.product.url:http://localhost:8082}")
     private String productServiceUrl;
 
     /**

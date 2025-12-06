@@ -20,7 +20,7 @@ public class LocationServiceClient {
 
     private final RestTemplate restTemplate;
 
-    @Value("${services.location.url:http://localhost:8083}")
+    @Value("${services.location.url:http://localhost:8085}")
     private String locationServiceUrl;
 
     /**
