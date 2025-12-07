@@ -54,15 +54,37 @@ export const AlertsPage: React.FC = () => {
   // FETCH ALERTS
   // ============================================================================
 
+  const scanForNewAlerts = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/inventory/scan-for-alerts', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const message = await response.text();
+        console.log('Alert scan:', message);
+      }
+    } catch (error) {
+      console.error('Failed to scan for alerts:', error);
+    }
+  };
+
   const fetchAlerts = async () => {
     setLoading(true);
     try {
+      // First, scan for new alerts
+      await scanForNewAlerts();
+
       const params: any = {
         page: pagination.page,
         size: pagination.size,
       };
 
-      // Fetch all alerts - filtering will be done on frontend
+      // Then fetch all alerts - filtering will be done on frontend
       const response = await alertService.getAlerts(params);
 
       setAlerts(response.content);

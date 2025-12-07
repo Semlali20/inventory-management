@@ -84,7 +84,7 @@ public class AlertClient {
     }
 
     /**
-     * Create a low stock alert
+     * Create a low stock alert (with duplicate prevention)
      */
     public void createLowStockAlert(
             String itemId,
@@ -93,6 +93,13 @@ public class AlertClient {
             Double threshold
     ) {
         try {
+            // Check if an active alert already exists for this item+location
+            if (hasActiveAlert(itemId, locationId)) {
+                log.debug("⏭️ Skipping alert creation - Active alert already exists for item {} at location {}",
+                        itemId, locationId);
+                return;
+            }
+
             log.info("⚠️ Creating low stock alert - Item: {}, Location: {}, Quantity: {}",
                     itemId, locationId, currentQuantity);
 
@@ -127,6 +134,58 @@ public class AlertClient {
 
         } catch (Exception e) {
             log.error("❌ Failed to create low stock alert: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Check if an active alert already exists for this item at this location
+     */
+    private boolean hasActiveAlert(String itemId, String locationId) {
+        try {
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(alertServiceUrl + "/api/alerts/by-type/LOW_STOCK")
+                    .queryParam("page", 0)
+                    .queryParam("size", 100)
+                    .toUriString();
+
+            HttpHeaders headers = createHeadersWithToken();
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+            @SuppressWarnings("unchecked")
+            var response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
+            Map<String, Object> responseBody = response.getBody();
+
+            if (responseBody != null && responseBody.containsKey("content")) {
+                @SuppressWarnings("unchecked")
+                var alerts = (java.util.List<Map<String, Object>>) responseBody.get("content");
+
+                for (Map<String, Object> alert : alerts) {
+                    String status = (String) alert.get("status");
+                    String data = (String) alert.get("data");
+
+                    // Only check ACTIVE or ESCALATED alerts
+                    if (("ACTIVE".equals(status) || "ESCALATED".equals(status)) && data != null) {
+                        try {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> dataMap = objectMapper.readValue(data, Map.class);
+                            String alertItemId = (String) dataMap.get("itemId");
+                            String alertLocationId = (String) dataMap.get("locationId");
+
+                            if (itemId.equals(alertItemId) && locationId.equals(alertLocationId)) {
+                                return true;
+                            }
+                        } catch (Exception e) {
+                            log.warn("Failed to parse alert data: {}", e.getMessage());
+                        }
+                    }
+                }
+            }
+
+            return false;
+
+        } catch (Exception e) {
+            log.warn("Failed to check for existing alerts: {}", e.getMessage());
+            return false; // If check fails, allow alert creation
         }
     }
 
@@ -204,20 +263,20 @@ public class AlertClient {
 
     private String mapSeverityToAlertLevel(String severity) {
         switch (severity.toUpperCase()) {
-            case "CRITICAL": return "EMERGENCY";
+            case "CRITICAL": return "CRITICAL";
             case "WARNING": return "WARNING";
             default: return "INFO";
         }
     }
 
     private String determineStockAlertLevel(Double quantity) {
-        if (quantity < 5.0) return "EMERGENCY";
+        if (quantity < 5.0) return "CRITICAL";
         else if (quantity < 10.0) return "WARNING";
         else return "INFO";
     }
 
     private String determineExpiryAlertLevel(Integer daysUntilExpiry) {
-        if (daysUntilExpiry <= 7) return "EMERGENCY";
+        if (daysUntilExpiry <= 7) return "CRITICAL";
         else if (daysUntilExpiry <= 30) return "WARNING";
         else return "INFO";
     }
