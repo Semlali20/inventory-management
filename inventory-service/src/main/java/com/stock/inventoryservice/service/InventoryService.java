@@ -43,4 +43,7 @@ public interface InventoryService {
     // Stock Availability
     boolean checkStockAvailability(String itemId, String locationId, Double quantity);
     Double getAvailableQuantity(String itemId, String locationId);
+
+    // Alert Management
+    int scanAllInventoryForAlerts();
 }

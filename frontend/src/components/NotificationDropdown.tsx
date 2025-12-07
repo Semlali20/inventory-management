@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { alertService, Alert } from '@/services/alert.service';
 import { toast } from 'react-hot-toast';
+import { useEnrichedAlerts } from '@/hooks/useEnrichedAlerts';
+import { parseAlertData } from '@/utils/alertUtils';
 
 interface NotificationDropdownProps {
   isOpen: boolean;
@@ -27,6 +29,9 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Enrich alerts with item names and location codes
+  const enrichedAlerts = useEnrichedAlerts(alerts);
 
   useEffect(() => {
     if (isOpen) {
@@ -186,7 +191,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                 </p>
               </div>
             ) : (
-              alerts.map((alert, index) => (
+              enrichedAlerts.map((alert, index) => (
                 <motion.div
                   key={alert.id}
                   initial={{ opacity: 0, x: -10 }}
@@ -204,9 +209,27 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                     {/* Alert Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2 mb-1">
-                        <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100 line-clamp-2">
-                          {alert.message}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          {/* Simple, clean message */}
+                          {(() => {
+                            const data = parseAlertData(alert);
+                            const itemName = alert.itemName || 'Item';
+                            const locationCode = alert.locationCode || 'Unknown location';
+                            const qty = data.currentQuantity ?? 0;
+                            const threshold = data.threshold ?? 0;
+
+                            return (
+                              <div>
+                                {/* Main message only - simple and clean */}
+                                <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+                                  {alert.type === 'LOW_STOCK'
+                                    ? `${itemName} is low on stock: ${qty} units left (needs ${threshold})`
+                                    : alert.formattedMessage || alert.message}
+                                </p>
+                              </div>
+                            );
+                          })()}
+                        </div>
                         <button
                           onClick={(e) => handleAcknowledge(alert.id, e)}
                           className="flex-shrink-0 p-1 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded transition-colors"
@@ -216,7 +239,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                         </button>
                       </div>
 
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap mt-2">
                         <span className="text-xs px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded">
                           {alert.type.replace('_', ' ')}
                         </span>

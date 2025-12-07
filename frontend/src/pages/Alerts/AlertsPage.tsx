@@ -20,6 +20,8 @@ import { toast } from 'react-hot-toast';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { useEnrichedAlerts } from '@/hooks/useEnrichedAlerts';
+import { parseAlertData, formatAlertDetails } from '@/utils/alertUtils';
 
 // ============================================================================
 // MAIN ALERTS PAGE COMPONENT
@@ -40,6 +42,9 @@ export const AlertsPage: React.FC = () => {
   });
   const [selectedAlert, setSelectedAlert] = useState<AlertType | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+
+  // Enrich alerts with item names and location codes
+  const enrichedAlerts = useEnrichedAlerts(alerts);
 
   useEffect(() => {
     fetchAlerts();
@@ -201,10 +206,11 @@ export const AlertsPage: React.FC = () => {
     }).format(date);
   };
 
-  const filteredAlerts = alerts.filter((alert) => {
+  const filteredAlerts = enrichedAlerts.filter((alert) => {
     const matchesSearch = searchTerm
-      ? alert.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        alert.type.toLowerCase().includes(searchTerm.toLowerCase())
+      ? (alert.formattedMessage || alert.message).toLowerCase().includes(searchTerm.toLowerCase()) ||
+        alert.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (alert.itemName?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
       : true;
     return matchesSearch;
   });
@@ -375,13 +381,24 @@ export const AlertsPage: React.FC = () => {
                     </div>
 
                     <p className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                      {alert.message}
+                      {(() => {
+                        const data = parseAlertData(alert);
+                        const itemName = alert.itemName || 'Item';
+                        const locationCode = alert.locationCode || 'Unknown location';
+                        const qty = data.currentQuantity ?? 0;
+                        const threshold = data.threshold ?? 0;
+
+                        if (alert.type === 'LOW_STOCK') {
+                          return `Low stock detected for ${itemName}: ${qty} units left at ${locationCode}`;
+                        }
+
+                        return alert.formattedMessage || alert.message;
+                      })()}
                     </p>
 
-                    {alert.entityType && (
+                    {(alert.itemName || alert.locationCode) && (
                       <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-                        Entity: {alert.entityType}
-                        {alert.entityId && ` (ID: ${alert.entityId.substring(0, 8)}...)`}
+                        {formatAlertDetails(alert, alert.itemName, alert.locationCode)}
                       </p>
                     )}
 
@@ -460,7 +477,11 @@ export const AlertsPage: React.FC = () => {
 
       {/* Alert Details Modal */}
       <AnimatePresence>
-        {showDetailsModal && selectedAlert && (
+        {showDetailsModal && selectedAlert && (() => {
+          const enrichedAlert = enrichedAlerts.find(a => a.id === selectedAlert.id) || selectedAlert;
+          const alertData = parseAlertData(enrichedAlert);
+
+          return (
           <>
             <motion.div
               initial={{ opacity: 0 }}
@@ -508,28 +529,57 @@ export const AlertsPage: React.FC = () => {
                       Message
                     </h3>
                     <p className="text-gray-900 dark:text-white">
-                      {selectedAlert.message}
+                      {(() => {
+                        const itemName = enrichedAlert.itemName || 'Item';
+                        const locationCode = enrichedAlert.locationCode || 'Unknown location';
+                        const qty = alertData.currentQuantity ?? 0;
+                        const threshold = alertData.threshold ?? 0;
+
+                        if (enrichedAlert.type === 'LOW_STOCK') {
+                          return `Low stock detected for ${itemName}: ${qty} units left at ${locationCode}`;
+                        }
+
+                        return enrichedAlert.formattedMessage || enrichedAlert.message;
+                      })()}
                     </p>
                   </div>
 
-                  {/* Entity Information */}
-                  {selectedAlert.entityType && (
+                  {/* Stock Details */}
+                  {alertData && (alertData.itemId || alertData.locationId) && (
                     <div>
                       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        Entity Information
+                        Stock Details
                       </h3>
                       <div className="bg-neutral-50 dark:bg-neutral-700/50 rounded-lg p-4 space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-sm text-gray-600 dark:text-gray-400">Type:</span>
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {selectedAlert.entityType}
-                          </span>
-                        </div>
-                        {selectedAlert.entityId && (
+                        {enrichedAlert.itemName && (
                           <div className="flex justify-between">
-                            <span className="text-sm text-gray-600 dark:text-gray-400">ID:</span>
-                            <span className="text-sm font-mono text-gray-900 dark:text-white">
-                              {selectedAlert.entityId}
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Item:</span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              {enrichedAlert.itemName}
+                            </span>
+                          </div>
+                        )}
+                        {enrichedAlert.locationCode && (
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Location:</span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              {enrichedAlert.locationCode}
+                            </span>
+                          </div>
+                        )}
+                        {alertData.currentQuantity !== undefined && (
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Current Quantity:</span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              {alertData.currentQuantity} units
+                            </span>
+                          </div>
+                        )}
+                        {alertData.threshold !== undefined && (
+                          <div className="flex justify-between">
+                            <span className="text-sm text-gray-600 dark:text-gray-400">Minimum Threshold:</span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              {alertData.threshold} units
                             </span>
                           </div>
                         )}
@@ -537,16 +587,23 @@ export const AlertsPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Additional Data */}
-                  {selectedAlert.data && Object.keys(selectedAlert.data).length > 0 && (
+                  {/* Custom Attributes */}
+                  {enrichedAlert.itemAttributes && Object.keys(enrichedAlert.itemAttributes).length > 0 && (
                     <div>
                       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        Additional Data
+                        Item Attributes
                       </h3>
-                      <div className="bg-neutral-50 dark:bg-neutral-700/50 rounded-lg p-4">
-                        <pre className="text-xs text-gray-900 dark:text-white overflow-x-auto">
-                          {JSON.stringify(selectedAlert.data, null, 2)}
-                        </pre>
+                      <div className="bg-neutral-50 dark:bg-neutral-700/50 rounded-lg p-4 space-y-2">
+                        {Object.entries(enrichedAlert.itemAttributes).map(([key, value]) => (
+                          <div key={key} className="flex justify-between">
+                            <span className="text-sm text-gray-600 dark:text-gray-400 capitalize">
+                              {key.replace(/_/g, ' ')}:
+                            </span>
+                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                              {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                            </span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -627,7 +684,8 @@ export const AlertsPage: React.FC = () => {
               </div>
             </motion.div>
           </>
-        )}
+        );
+        })()}
       </AnimatePresence>
     </div>
   );

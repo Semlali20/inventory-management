@@ -4,7 +4,14 @@
       "Bash(mvn clean compile:*)",
       "Bash(docker-compose logs inventory-service)",
       "Bash(mvn clean package:*)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose restart:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

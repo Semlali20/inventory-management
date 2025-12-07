@@ -687,4 +687,35 @@ public class InventoryServiceImpl implements InventoryService {
                 .itemDetails(itemDetails)
                 .build();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public int scanAllInventoryForAlerts() {
+        log.info("🔍 Starting scan of all inventory for low stock alerts...");
+
+        List<Inventory> allInventories = inventoryRepository.findAll();
+        int alertsCreated = 0;
+
+        for (Inventory inventory : allInventories) {
+            try {
+                Double availableQty = inventory.getAvailableQuantity();
+
+                // Only create alerts for items below WARNING threshold
+                if (availableQty < 10.0) {
+                    checkLowStockAndCreateAlert(inventory);
+                    alertsCreated++;
+                    log.info("✅ Alert created for item {} at location {} (qty: {})",
+                            inventory.getItemId(), inventory.getLocationId(), availableQty);
+                }
+            } catch (Exception e) {
+                log.error("❌ Failed to check/create alert for inventory {}: {}",
+                        inventory.getId(), e.getMessage());
+            }
+        }
+
+        log.info("🎯 Scan complete! Total inventories scanned: {}, Alerts created: {}",
+                allInventories.size(), alertsCreated);
+
+        return alertsCreated;
+    }
 }

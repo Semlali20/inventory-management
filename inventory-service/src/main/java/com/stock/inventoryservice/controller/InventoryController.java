@@ -295,4 +295,20 @@ public class InventoryController {
         Double quantity = inventoryService.getAvailableQuantity(itemId, locationId);
         return ResponseEntity.ok(quantity);
     }
+
+    // ========== ALERT MANAGEMENT ==========
+
+    @PostMapping("/scan-for-alerts")
+    @PreAuthorize("hasAnyRole('ADMIN', 'WAREHOUSE_MANAGER')")
+    @Operation(summary = "Scan all inventory for low stock alerts",
+            description = "Scans all inventory items and creates alerts for items below thresholds")
+    @ApiResponse(responseCode = "200", description = "Scan completed successfully")
+    public ResponseEntity<String> scanAllInventoryForAlerts() {
+        log.info("REST request to scan all inventory for low stock alerts");
+
+        int alertsCreated = inventoryService.scanAllInventoryForAlerts();
+
+        String message = String.format("Scan completed successfully. %d alert(s) created for low stock items.", alertsCreated);
+        return ResponseEntity.ok(message);
+    }
 }
