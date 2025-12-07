@@ -48,7 +48,7 @@ export const AlertsPage: React.FC = () => {
 
   useEffect(() => {
     fetchAlerts();
-  }, [pagination.page, filterType, filterLevel, filterStatus]);
+  }, [pagination.page]);
 
   // ============================================================================
   // FETCH ALERTS
@@ -62,17 +62,8 @@ export const AlertsPage: React.FC = () => {
         size: pagination.size,
       };
 
-      // Apply filters
-      let response;
-      if (filterType) {
-        response = await alertService.getAlertsByType(filterType as any, params);
-      } else if (filterLevel) {
-        response = await alertService.getAlertsByLevel(filterLevel as any, params);
-      } else if (filterStatus) {
-        response = await alertService.getAlertsByStatus(filterStatus as any, params);
-      } else {
-        response = await alertService.getAlerts(params);
-      }
+      // Fetch all alerts - filtering will be done on frontend
+      const response = await alertService.getAlerts(params);
 
       setAlerts(response.content);
       setPagination({
@@ -149,13 +140,26 @@ export const AlertsPage: React.FC = () => {
   const getLevelColor = (level: string) => {
     switch (level) {
       case 'CRITICAL':
+      case 'EMERGENCY': // Map EMERGENCY to CRITICAL
         return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
       case 'WARNING':
         return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300';
       case 'INFO':
+      case 'INFORMATION': // Map INFORMATION to INFO
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
+    }
+  };
+
+  const normalizeLevelName = (level: string): string => {
+    switch (level) {
+      case 'EMERGENCY':
+        return 'CRITICAL';
+      case 'INFORMATION':
+        return 'INFO';
+      default:
+        return level;
     }
   };
 
@@ -212,7 +216,14 @@ export const AlertsPage: React.FC = () => {
         alert.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (alert.itemName?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
       : true;
-    return matchesSearch;
+
+    const matchesType = filterType ? alert.type === filterType : true;
+    // Normalize the level before comparing (EMERGENCY -> CRITICAL, INFORMATION -> INFO)
+    const normalizedAlertLevel = normalizeLevelName(alert.level);
+    const matchesLevel = filterLevel ? normalizedAlertLevel === filterLevel : true;
+    const matchesStatus = filterStatus ? alert.status === filterStatus : true;
+
+    return matchesSearch && matchesType && matchesLevel && matchesStatus;
   });
 
   // ============================================================================
@@ -365,7 +376,7 @@ export const AlertsPage: React.FC = () => {
                             alert.level
                           )}`}
                         >
-                          {alert.level}
+                          {normalizeLevelName(alert.level)}
                         </span>
                         <span
                           className={`px-2.5 py-1 text-xs font-semibold rounded-lg ${getStatusColor(
@@ -516,10 +527,10 @@ export const AlertsPage: React.FC = () => {
                       {selectedAlert.type.replace('_', ' ')}
                     </span>
                     <span className={`px-3 py-1.5 text-sm font-semibold rounded-lg ${getLevelColor(selectedAlert.level)}`}>
-                      {selectedAlert.level}
+                      {normalizeLevelName(selectedAlert.level)}
                     </span>
                     <span className={`px-3 py-1.5 text-sm font-semibold rounded-lg ${getStatusColor(selectedAlert.status)}`}>
-                      {selectedAlert.status}
+                      {selectedAlert.status === 'ESCALATED' ? 'ACTIVE' : selectedAlert.status}
                     </span>
                   </div>
 
