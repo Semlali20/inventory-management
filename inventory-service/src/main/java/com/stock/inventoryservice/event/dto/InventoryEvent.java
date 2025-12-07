@@ -28,9 +28,17 @@ public class InventoryEvent implements Serializable {
     private Double quantityReserved;
     private Double quantityDamaged;
     private Double availableQuantity;
+    private Double previousQuantity;  // ✅ ADD THIS
+
+    // ✅ ADD THESE THRESHOLD FIELDS:
+    private Double minThreshold;
+    private Double maxThreshold;
+    private Boolean thresholdViolated;
+    private String violationType;
+    private String status;  // ✅ ADD THIS
 
     // Event metadata
-    private String eventType; // CREATED, UPDATED, DELETED, ADJUSTED, RESERVED, RELEASED, TRANSFERRED
+    private String eventType;
     private String reason;
     private String userId;
     private LocalDateTime timestamp;

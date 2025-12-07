@@ -1,6 +1,7 @@
 package com.stock.inventoryservice.service.impl;
 
 import com.stock.inventoryservice.event.dto.InventoryEvent;
+import com.stock.inventoryservice.event.StockBelowThresholdEvent;  // ✅ ADD THIS IMPORT
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -20,10 +21,8 @@ public class InventoryEventPublisher {
     private static final String INVENTORY_RESERVED_TOPIC = "inventory.reserved";
     private static final String INVENTORY_RELEASED_TOPIC = "inventory.released";
     private static final String INVENTORY_TRANSFERRED_TOPIC = "inventory.transferred";
+    private static final String STOCK_BELOW_THRESHOLD_TOPIC = "stock.below.threshold";  // ✅ ADD THIS
 
-    /**
-     * Publish inventory event based on event type
-     */
     public void publishInventoryEvent(InventoryEvent event) {
         String topic = getTopicByEventType(event.getEventType());
 
@@ -45,9 +44,25 @@ public class InventoryEventPublisher {
         }
     }
 
-    /**
-     * Get Kafka topic based on event type
-     */
+    // ✅ ADD THIS METHOD:
+    public void publishStockBelowThreshold(StockBelowThresholdEvent event) {
+        log.info("📢 Publishing stock.below.threshold event for item: {} at location: {}",
+                event.getItemId(), event.getLocationId());
+        
+        try {
+            kafkaTemplate.send(STOCK_BELOW_THRESHOLD_TOPIC, event.getItemId(), event)
+                    .whenComplete((result, ex) -> {
+                        if (ex == null) {
+                            log.info("✅ Successfully published stock.below.threshold event");
+                        } else {
+                            log.error("❌ Failed to publish stock.below.threshold event", ex);
+                        }
+                    });
+        } catch (Exception e) {
+            log.error("❌ Error publishing stock.below.threshold event", e);
+        }
+    }
+
     private String getTopicByEventType(String eventType) {
         return switch (eventType.toUpperCase()) {
             case "CREATED" -> INVENTORY_CREATED_TOPIC;

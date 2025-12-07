@@ -26,7 +26,7 @@ public class AlertClient {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    @Value("${services.alert.url:http://localhost:8088}")
+    @Value("${services.alert-service.url:http://localhost:8088}")
     private String alertServiceUrl;
 
     public AlertClient(RestTemplate restTemplate) {

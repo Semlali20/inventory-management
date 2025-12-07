@@ -11,6 +11,7 @@ import com.stock.inventoryservice.dto.request.InventoryTransferRequest;
 import com.stock.inventoryservice.dto.request.InventoryUpdateRequest;
 import com.stock.inventoryservice.entity.Inventory;
 import com.stock.inventoryservice.entity.InventoryStatus;
+import com.stock.inventoryservice.event.StockBelowThresholdEvent;
 import com.stock.inventoryservice.event.dto.InventoryEvent;
 import com.stock.inventoryservice.exception.InsufficientStockException;
 import com.stock.inventoryservice.exception.LocationCapacityExceededException;
@@ -82,6 +83,9 @@ public class InventoryServiceImpl implements InventoryService {
         log.info("Inventory created successfully with ID: {}", savedInventory.getId());
 
         publishInventoryEvent(savedInventory, "CREATED");
+
+        // 🚨 Check for low stock and create alert if needed
+        checkLowStockAndCreateAlert(savedInventory);
 
         return mapToDTO(savedInventory);
     }
@@ -198,6 +202,9 @@ public class InventoryServiceImpl implements InventoryService {
         log.info("Quantity adjusted from {} to {}", previousQuantity, request.getNewQuantity());
 
         publishInventoryEvent(savedInventory, "ADJUSTED");
+
+        // 🚨 Check for low stock and create alert if needed
+        checkLowStockAndCreateAlert(savedInventory);
 
         return mapToDTO(savedInventory);
     }
@@ -333,6 +340,9 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory savedInventory = inventoryRepository.save(inventory);
 
         publishInventoryEvent(savedInventory, "UPDATED");
+
+        // 🚨 Check for low stock and create alert if needed
+        checkLowStockAndCreateAlert(savedInventory);
 
         return mapToDTO(savedInventory);
     }
@@ -516,22 +526,104 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     private void publishInventoryEvent(Inventory inventory, String eventType) {
+        boolean isBelowThreshold = inventory.getQuantityOnHand() < 5.0;
+        
         InventoryEvent event = InventoryEvent.builder()
                 .inventoryId(inventory.getId())
                 .itemId(inventory.getItemId())
                 .warehouseId(inventory.getWarehouseId())
                 .locationId(inventory.getLocationId())
-                .lotId(inventory.getLotId())
-                .serialId(inventory.getSerialId())
                 .quantityOnHand(inventory.getQuantityOnHand())
                 .quantityReserved(inventory.getQuantityReserved())
-                .quantityDamaged(inventory.getQuantityDamaged())
                 .availableQuantity(inventory.getAvailableQuantity())
                 .eventType(eventType)
                 .timestamp(LocalDateTime.now())
+                // ✅ ADD THESE CRITICAL FIELDS:
+                .thresholdViolated(isBelowThreshold)
+                .minThreshold(5.0)  // Your threshold
+                .violationType(isBelowThreshold ? "LOW_STOCK" : null)
                 .build();
-
+    
         eventPublisher.publishInventoryEvent(event);
+        
+        if (isBelowThreshold) {
+            publishStockBelowThresholdEvent(inventory);
+        }
+    }
+    private void publishStockBelowThresholdEvent(Inventory inventory) {
+    StockBelowThresholdEvent event = StockBelowThresholdEvent.builder()
+            .itemId(inventory.getItemId())
+            .locationId(inventory.getLocationId())
+            .warehouseId(inventory.getWarehouseId())
+            .currentQuantity(inventory.getQuantityOnHand())
+            .threshold(5.0)
+            .alertLevel(inventory.getQuantityOnHand() < 3.0 ? "CRITICAL" : "WARNING")
+            .timestamp(LocalDateTime.now())
+            .build();
+            
+    eventPublisher.publishStockBelowThreshold(event);
+}
+
+    /**
+     * 🚨 Check if inventory is low and create alert via AlertClient
+     *
+     * Thresholds:
+     * - CRITICAL: quantity < 5
+     * - WARNING: quantity < 10
+     */
+    private void checkLowStockAndCreateAlert(Inventory inventory) {
+        Double quantity = inventory.getAvailableQuantity(); // Available = OnHand - Reserved
+
+        // Define thresholds
+        final Double CRITICAL_THRESHOLD = 5.0;
+        final Double WARNING_THRESHOLD = 10.0;
+
+        log.debug("Checking low stock for item: {}, quantity: {}", inventory.getItemId(), quantity);
+
+        try {
+            // CRITICAL ALERT: quantity < 5
+            if (quantity < CRITICAL_THRESHOLD) {
+                String message = String.format(
+                        "CRITICAL: Item %s has only %.2f units available at location %s (threshold: %.0f)",
+                        inventory.getItemId(),
+                        quantity,
+                        inventory.getLocationId(),
+                        CRITICAL_THRESHOLD
+                );
+
+                alertClient.createLowStockAlert(
+                        inventory.getItemId(),
+                        inventory.getLocationId(),
+                        quantity,
+                        CRITICAL_THRESHOLD
+                );
+
+                log.warn("🚨 CRITICAL LOW STOCK: {}", message);
+            }
+            // WARNING ALERT: quantity < 10
+            else if (quantity < WARNING_THRESHOLD) {
+                String message = String.format(
+                        "WARNING: Item %s has %.2f units available at location %s (threshold: %.0f)",
+                        inventory.getItemId(),
+                        quantity,
+                        inventory.getLocationId(),
+                        WARNING_THRESHOLD
+                );
+
+                alertClient.createLowStockAlert(
+                        inventory.getItemId(),
+                        inventory.getLocationId(),
+                        quantity,
+                        WARNING_THRESHOLD
+                );
+
+                log.warn("⚠️ WARNING LOW STOCK: {}", message);
+            }
+        } catch (Exception e) {
+            // Don't fail the inventory operation if alert creation fails
+            log.error("Failed to create low stock alert for item {}: {}",
+                    inventory.getItemId(), e.getMessage());
+        }
     }
 
     private InventoryDTO mapToDTO(Inventory inventory) {
