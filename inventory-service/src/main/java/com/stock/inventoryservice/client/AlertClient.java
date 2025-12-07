@@ -143,7 +143,7 @@ public class AlertClient {
     private boolean hasActiveAlert(String itemId, String locationId) {
         try {
             String url = UriComponentsBuilder
-                    .fromHttpUrl(alertServiceUrl + "/api/alerts/by-type/LOW_STOCK")
+                    .fromHttpUrl(alertServiceUrl + "/api/alerts/type/LOW_STOCK")
                     .queryParam("page", 0)
                     .queryParam("size", 100)
                     .toUriString();
@@ -168,6 +168,15 @@ public class AlertClient {
                         try {
                             @SuppressWarnings("unchecked")
                             Map<String, Object> dataMap = objectMapper.readValue(data, Map.class);
+
+                            // Data might be wrapped in rawData field
+                            String rawData = (String) dataMap.get("rawData");
+                            if (rawData != null) {
+                                // URL decode the rawData
+                                rawData = java.net.URLDecoder.decode(rawData, "UTF-8");
+                                dataMap = objectMapper.readValue(rawData, Map.class);
+                            }
+
                             String alertItemId = (String) dataMap.get("itemId");
                             String alertLocationId = (String) dataMap.get("locationId");
 

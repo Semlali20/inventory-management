@@ -14,7 +14,8 @@
       "Bash(curl:*)",
       "Bash(npm run dev:*)",
       "Bash(docker compose build:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

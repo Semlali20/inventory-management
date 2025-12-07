@@ -6,7 +6,8 @@ package com.stock.alertservice.enums;
 public enum AlertLevel {
     INFO("Information", 1),
     WARNING("Avertissement", 2),
-    EMERGENCY("Urgence", 3);
+    CRITICAL("Critique", 3),
+    EMERGENCY("Urgence", 3);  // Keep for backward compatibility
 
     private final String description;
     private final int priority;
